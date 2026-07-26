@@ -218,6 +218,9 @@ artifact correctness. The remaining two failures were isolated `read_file` contr
 deviations. The rubric change means the strict scores are versioned rather than a pure
 model-only comparison. See the [v1 analysis](docs/live-eval-2026-07-26.md) and
 [sanitized v1/v2 comparison](docs/live-eval-v1-v2-comparison.md).
+The [local live-eval runbook](docs/live-eval-runbook.zh-CN.md) documents Python selection,
+non-echoed credential input, gateway profiles, smoke testing, versioned reruns, and
+sanitization checks.
 
 ## Inspectable evidence
 

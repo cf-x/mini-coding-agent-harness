@@ -152,8 +152,11 @@ mini-harness live-eval evals/live_cases --runs 3
 解释器、增加分层指标和有界收尾轮，并允许两种受支持的文件修改工具：严格通过
 13/15（86.7%），Pass@3 100%，Runtime 完成 15/15，产物正确 15/15。剩余两次失败都是
 未调用专用 `read_file` 的工具契约偏差。由于 Rubric 已版本化调整，不能把严格分数变化
-完全归因于模型能力。详见 [v1 脱敏分析](docs/live-eval-2026-07-26.md)和
+完全归因于模型能力。详见 [v1 脱敏分析](docs/live-eval-2026-07-26.md) 和
 [v1/v2 脱敏对比](docs/live-eval-v1-v2-comparison.md)。
+
+以后复跑时，Python 版本、无回显 API Key 输入、兼容网关参数、冒烟、5×3 正式运行和
+脱敏检查统一按[本地 Live Eval 复跑手册](docs/live-eval-runbook.zh-CN.md)执行。
 
 ### 可检查证据
 
