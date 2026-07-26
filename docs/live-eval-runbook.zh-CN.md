@@ -61,11 +61,51 @@ mini-harness live-eval evals/live_cases --validate-only
 
 只有这些检查通过后，才进行付费 Live Eval。
 
-## 4. 安全输入 API Key
+## 4. macOS Keychain（推荐）
 
-OpenAI 官方生产建议要求避免把 API Key 写进代码或公开仓库，并通过环境变量或
-Secret Manager 注入。本项目本地运行采用临时环境变量，且不把真实值写进命令历史、
-`.env`、TOML、Trace、README 或评测结果。
+macOS 本地复跑默认使用登录钥匙串保存凭据。第一次在仓库根目录执行：
+
+```bash
+./scripts/macos-keychain-openai setup
+```
+
+脚本会各提示一次 API Key 和 API Base URL，输入均不回显。API Key 必须是以 `sk-`
+开头的 OpenAI 风格；使用官方 OpenAI API 时，Base URL 留空。兼容网关传入完整 API
+Root，具体是否以 `/v1` 结尾以网关文档为准。
+
+确认记录是否存在：
+
+```bash
+./scripts/macos-keychain-openai status
+```
+
+`status` 只显示 `stored` 或 `missing`，不读取或打印真实值。以后运行 CLI 时使用：
+
+```bash
+./scripts/macos-keychain-openai run --help
+```
+
+`run` 从脚本所在位置定位仓库，并且只启动该仓库的 `.venv/bin/mini-harness`。Key 和
+Base URL 只进入这个子进程的环境，不进入调用它的 Shell、命令参数、`.env`、TOML、
+Trace、README 或评测结果。macOS 可能在首次读取或钥匙串策略变化后弹出访问授权提示；
+应核对请求程序后再允许。
+
+Key 轮换或 Endpoint 变更时只需重新运行 `setup`，后续命令不变。登录钥匙串解决的是
+个人 Mac 上反复输入凭据的问题，不是服务器或团队环境的生产级 Secret Manager。CI、
+容器和共享机器应使用平台提供的 Secret 注入机制。
+
+脚本使用以下固定标识，便于在“钥匙串访问”中审计或删除：
+
+```text
+Account: mini-coding-agent-harness
+Service: mini-coding-agent-harness.openai-api-key
+Service: mini-coding-agent-harness.openai-base-url
+```
+
+## 5. 临时环境变量（非 macOS 兜底）
+
+OpenAI 官方生产建议要求避免把 API Key 写进代码或公开仓库，并通过环境变量或 Secret
+Manager 注入。Linux、CI 或临时运行可以继续使用仅对当前 Shell 有效的环境变量。
 
 在 zsh 中使用无回显输入：
 
@@ -105,10 +145,7 @@ echo "$OPENAI_API_KEY"               # 会显示到终端或日志
 - [Production best practices: API keys](https://developers.openai.com/api/docs/guides/production-best-practices#api-keys)
 - [OpenAI SDKs and CLI](https://developers.openai.com/api/docs/libraries#create-and-export-an-api-key)
 
-## 5. 配置 API Endpoint
-
-官方 OpenAI API 不需要设置 `OPENAI_BASE_URL`。OpenAI-compatible 网关使用环境变量
-传入完整 API Root，具体是否以 `/v1` 结尾以网关文档为准。
+官方 OpenAI API 不需要设置 `OPENAI_BASE_URL`。OpenAI-compatible 网关可以交互输入：
 
 为了避免把私有地址写进 Shell History，可以交互输入：
 
@@ -141,7 +178,7 @@ test -n "$OPENAI_BASE_URL" && echo "OPENAI_BASE_URL is set"
 smoke_cases="$(mktemp -d)"
 cp -R evals/live_cases/broken_add "$smoke_cases/"
 
-mini-harness live-eval "$smoke_cases" \
+./scripts/macos-keychain-openai run live-eval "$smoke_cases" \
   --output eval-results/live-smoke \
   --runs 1 \
   --model gpt-5.6-terra \
@@ -167,7 +204,7 @@ mini-harness live-eval "$smoke_cases" \
 每次复测使用新目录，不覆盖 v1/v2：
 
 ```bash
-mini-harness live-eval evals/live_cases \
+./scripts/macos-keychain-openai run live-eval evals/live_cases \
   --output eval-results/live-v3-YYYYMMDD \
   --runs 3 \
   --model gpt-5.6-terra \
@@ -212,7 +249,8 @@ find eval-results/live-v3-YYYYMMDD/traces -type f -name '*.jsonl' | wc -l
 
 5 Case x 3 Runs 应得到 15 份 Trace。
 
-提交公开摘要前，先检查暂存差异是否包含当前 Key 或 Endpoint，但不要打印它们：
+使用临时环境变量时，提交公开摘要前检查暂存差异是否包含当前 Key 或 Endpoint，但不要
+打印它们：
 
 ```bash
 if git diff --cached | rg --quiet -F "$OPENAI_API_KEY"; then
@@ -233,6 +271,9 @@ fi
 基线，不提交原始私有运行数据。
 
 ## 9. 运行结束
+
+Keychain 包装脚本使用 `exec` 启动 CLI，进程结束后凭据环境随之消失，调用它的 Shell
+不需要清理。只有使用第 5 节的临时环境变量兜底时才执行：
 
 ```bash
 unset OPENAI_API_KEY

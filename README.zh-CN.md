@@ -45,18 +45,15 @@ mini-harness eval evals/cases
 运行真实 OpenAI 模型：
 
 ```bash
-export OPENAI_API_KEY="..."
-mini-harness run \
+./scripts/macos-keychain-openai setup  # 仅首次或轮换凭据时执行
+./scripts/macos-keychain-openai run run \
   --workspace ./example-workspace \
   "检查测试，修复缺陷，并运行相关测试。"
 ```
 
-使用 OpenAI-compatible 网关时，通过环境变量传入完整 API Root，不要把 Key 写入仓库：
-
-```bash
-export OPENAI_BASE_URL="https://your-gateway.example/v1"
-mini-harness run --workspace ./example-workspace "修复失败测试。"
-```
+macOS 包装脚本把 OpenAI 风格的 `sk-` Key 和可选 Base URL 保存在登录钥匙串中，后续只
+向仓库的 `.venv/bin/mini-harness` 进程注入。Linux、CI 或临时运行仍可使用
+`OPENAI_API_KEY` 和可选的 `OPENAI_BASE_URL` 环境变量。不要把真实值写入仓库。
 
 默认 `--tool-mode auto` 优先使用 Responses 原生 Function Tools。兼容网关明确拒绝原生
 工具时，可以回退到 JSON Prompt 协议；`function` 可强制原生模式，`prompt` 可显式选择
@@ -138,8 +135,7 @@ mini-harness live-eval evals/live_cases --validate-only
 凭据可用后执行预定的 5 个 Case x 3 次：
 
 ```bash
-export OPENAI_API_KEY="..."
-mini-harness live-eval evals/live_cases --runs 3
+./scripts/macos-keychain-openai run live-eval evals/live_cases --runs 3
 ```
 
 每次从干净 Fixture 开始，以文件断言和 `unittest` 退出码验收。`gpt-5.6-sol`、
@@ -155,8 +151,9 @@ mini-harness live-eval evals/live_cases --runs 3
 完全归因于模型能力。详见 [v1 脱敏分析](docs/live-eval-2026-07-26.md) 和
 [v1/v2 脱敏对比](docs/live-eval-v1-v2-comparison.md)。
 
-以后复跑时，Python 版本、无回显 API Key 输入、兼容网关参数、冒烟、5×3 正式运行和
-脱敏检查统一按[本地 Live Eval 复跑手册](docs/live-eval-runbook.zh-CN.md)执行。
+以后复跑时，Python 版本、macOS Keychain、临时环境变量兜底、兼容网关参数、冒烟、
+5×3 正式运行和脱敏检查统一按
+[本地 Live Eval 复跑手册](docs/live-eval-runbook.zh-CN.md)执行。
 
 ### 可检查证据
 

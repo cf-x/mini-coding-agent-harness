@@ -1,0 +1,217 @@
+#!/bin/zsh
+
+set -eu
+
+readonly ACCOUNT="mini-coding-agent-harness"
+readonly API_KEY_SERVICE="mini-coding-agent-harness.openai-api-key"
+readonly BASE_URL_SERVICE="mini-coding-agent-harness.openai-base-url"
+readonly SECURITY="/usr/bin/security"
+readonly EXPECT="/usr/bin/expect"
+readonly REPO_ROOT="${0:A:h:h}"
+readonly HARNESS="${REPO_ROOT}/.venv/bin/mini-harness"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./scripts/macos-keychain-openai setup
+  ./scripts/macos-keychain-openai status
+  ./scripts/macos-keychain-openai run <mini-harness arguments...>
+
+Commands:
+  setup   Store or rotate the OpenAI API key and optional base URL.
+  status  Report whether the Keychain records exist without showing values.
+  run     Inject the records into the repository's mini-harness process.
+EOF
+}
+
+die() {
+  print -u2 -- "error: $1"
+  exit 1
+}
+
+require_macos() {
+  [[ "$(/usr/bin/uname -s)" == "Darwin" ]] ||
+    die "macOS Keychain is only available on macOS"
+  [[ -x "$SECURITY" ]] || die "/usr/bin/security is unavailable"
+}
+
+record_exists() {
+  local service="$1"
+  "$SECURITY" find-generic-password \
+    -a "$ACCOUNT" \
+    -s "$service" \
+    >/dev/null 2>&1
+}
+
+read_record() {
+  local service="$1"
+  "$SECURITY" find-generic-password \
+    -a "$ACCOUNT" \
+    -s "$service" \
+    -w \
+    2>/dev/null
+}
+
+store_record() {
+  local service="$1"
+  local value="$2"
+
+  # security intentionally prompts when -w has no argument. expect answers
+  # that prompt without putting the credential in a process argument.
+  OPENAI_KEYCHAIN_VALUE="$value" "$EXPECT" -f - "$ACCOUNT" "$service" <<'EXPECT_SCRIPT' ||
+set timeout 15
+log_user 0
+
+set account [lindex $argv 0]
+set service [lindex $argv 1]
+set value $env(OPENAI_KEYCHAIN_VALUE)
+unset env(OPENAI_KEYCHAIN_VALUE)
+
+spawn -noecho /usr/bin/security add-generic-password \
+  -U \
+  -a $account \
+  -s $service \
+  -w
+
+expect {
+  -re {password data[^:]*:} {
+    send -- "$value\r"
+  }
+  timeout {
+    exit 124
+  }
+  eof {
+    exit 1
+  }
+}
+
+expect {
+  -re {retype password[^:]*:} {
+    send -- "$value\r"
+    exp_continue
+  }
+  eof {}
+  timeout {
+    exit 124
+  }
+}
+
+set wait_result [wait]
+exit [lindex $wait_result 3]
+EXPECT_SCRIPT
+    die "could not update the macOS Keychain"
+}
+
+delete_record_if_present() {
+  local service="$1"
+
+  if record_exists "$service"; then
+    "$SECURITY" delete-generic-password \
+      -a "$ACCOUNT" \
+      -s "$service" \
+      >/dev/null 2>&1 ||
+      die "could not remove the macOS Keychain record"
+  fi
+}
+
+setup_credentials() {
+  local api_key
+  local base_url
+
+  [[ -x "$EXPECT" ]] || die "/usr/bin/expect is unavailable"
+  [[ -t 0 || -t 1 || -t 2 ]] ||
+    die "setup requires an interactive terminal"
+
+  print -n -u2 -- "OpenAI API key (hidden): "
+  IFS= read -r -s api_key </dev/tty
+  print -u2
+
+  [[ -n "$api_key" ]] || die "the API key cannot be empty"
+  [[ "$api_key" == sk-* ]] ||
+    die "expected an OpenAI-style API key beginning with sk-"
+
+  print -n -u2 -- "OpenAI base URL, blank for the official API (hidden): "
+  IFS= read -r -s base_url </dev/tty
+  print -u2
+
+  if [[ -n "$base_url" && "$base_url" != https://* && "$base_url" != http://* ]]; then
+    die "the base URL must start with https:// or http://"
+  fi
+
+  store_record "$API_KEY_SERVICE" "$api_key"
+  if [[ -n "$base_url" ]]; then
+    store_record "$BASE_URL_SERVICE" "$base_url"
+  else
+    delete_record_if_present "$BASE_URL_SERVICE"
+  fi
+
+  api_key=""
+  base_url=""
+  unset api_key base_url
+  print -- "Credentials updated in macOS Keychain; no values were displayed."
+}
+
+show_status() {
+  local key_status="missing"
+  local url_status="missing (official API will be used)"
+  local exit_code=1
+
+  if record_exists "$API_KEY_SERVICE"; then
+    key_status="stored"
+    exit_code=0
+  fi
+  if record_exists "$BASE_URL_SERVICE"; then
+    url_status="stored"
+  fi
+
+  print -- "OpenAI API key: ${key_status}"
+  print -- "OpenAI base URL: ${url_status}"
+  return "$exit_code"
+}
+
+run_harness() {
+  (( $# > 0 )) || die "run requires mini-harness arguments"
+  [[ -x "$HARNESS" ]] ||
+    die "missing ${HARNESS}; create .venv and install the project first"
+  record_exists "$API_KEY_SERVICE" ||
+    die "API key is missing; run ./scripts/macos-keychain-openai setup"
+
+  export OPENAI_API_KEY="$(read_record "$API_KEY_SERVICE")"
+  [[ -n "$OPENAI_API_KEY" ]] || die "the stored API key is empty"
+
+  if record_exists "$BASE_URL_SERVICE"; then
+    export OPENAI_BASE_URL="$(read_record "$BASE_URL_SERVICE")"
+  else
+    unset OPENAI_BASE_URL
+  fi
+
+  exec "$HARNESS" "$@"
+}
+
+main() {
+  require_macos
+
+  case "${1:-}" in
+    setup)
+      (( $# == 1 )) || die "setup accepts no additional arguments"
+      setup_credentials
+      ;;
+    status)
+      (( $# == 1 )) || die "status accepts no additional arguments"
+      show_status
+      ;;
+    run)
+      shift
+      run_harness "$@"
+      ;;
+    -h | --help | help)
+      usage
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"

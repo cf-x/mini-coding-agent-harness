@@ -85,18 +85,16 @@ The eval command uses scripted model responses and sends no network request.
 For a live OpenAI run:
 
 ```bash
-export OPENAI_API_KEY="..."
-mini-harness run \
+./scripts/macos-keychain-openai setup  # first use or credential rotation only
+./scripts/macos-keychain-openai run run \
   --workspace ./example-workspace \
   "Inspect the tests, fix the bug, and run the relevant test command."
 ```
 
-OpenAI-compatible gateways can be selected without storing credentials:
-
-```bash
-export OPENAI_BASE_URL="https://your-gateway.example/v1"
-mini-harness run --workspace ./example-workspace "Fix the failing tests."
-```
+On macOS, the wrapper stores an OpenAI-style `sk-` key and optional base URL in the login
+Keychain, then injects them only into the repository's `.venv/bin/mini-harness` process.
+Linux, CI, and temporary runs can still use the `OPENAI_API_KEY` and optional
+`OPENAI_BASE_URL` environment variables. Never commit real values.
 
 The default `--tool-mode auto` uses native Responses function tools. If a compatible gateway
 explicitly rejects function tools, it can fall back on a JSON prompt protocol. Use
@@ -200,8 +198,7 @@ mini-harness live-eval evals/live_cases --validate-only
 Run the intended 5 cases x 3 attempts only when a working model credential is available:
 
 ```bash
-export OPENAI_API_KEY="..."
-mini-harness live-eval evals/live_cases --runs 3
+./scripts/macos-keychain-openai run live-eval evals/live_cases --runs 3
 ```
 
 Every attempt starts from a clean fixture and is accepted by file assertions and `unittest`
@@ -219,8 +216,8 @@ deviations. The rubric change means the strict scores are versioned rather than 
 model-only comparison. See the [v1 analysis](docs/live-eval-2026-07-26.md) and
 [sanitized v1/v2 comparison](docs/live-eval-v1-v2-comparison.md).
 The [local live-eval runbook](docs/live-eval-runbook.zh-CN.md) documents Python selection,
-non-echoed credential input, gateway profiles, smoke testing, versioned reruns, and
-sanitization checks.
+macOS Keychain setup, temporary environment-variable fallback, gateway profiles, smoke
+testing, versioned reruns, and sanitization checks.
 
 ## Inspectable evidence
 
