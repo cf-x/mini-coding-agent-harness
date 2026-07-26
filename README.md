@@ -2,8 +2,6 @@
 
 [简体中文](README.zh-CN.md)
 
-[![CI](https://github.com/cf-x/mini-coding-agent-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/cf-x/mini-coding-agent-harness/actions/workflows/ci.yml)
-
 A small, testable coding-agent harness with explicit policy checks, append-only JSONL
 traces, offline model-response replay, and deterministic evaluations.
 
@@ -73,7 +71,6 @@ every model tool request receives exactly one result.
 Python 3.11 or newer is required.
 
 ```bash
-git clone https://github.com/cf-x/mini-coding-agent-harness.git
 cd mini-coding-agent-harness
 python3.12 -m venv .venv
 source .venv/bin/activate
@@ -312,10 +309,11 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for change requirements and
 
 ## References, attribution, and reuse
 
-The repository is an original implementation. It does not copy source files or substantial
-code blocks from the projects below.
+The repository is an original implementation. The lists below distinguish projects consulted
+for the current design from comparison candidates and runtime dependencies. It does not copy
+source files or substantial code blocks from these projects.
 
-### Design references
+### Repositories consulted for the current design
 
 - [`shareAI-lab/learn-claude-code`](https://github.com/shareAI-lab/learn-claude-code)
   (MIT): the progressive teaching examples informed the basic agent-loop, tool-dispatch,
@@ -324,6 +322,9 @@ code blocks from the projects below.
 - [`openai/codex`](https://github.com/openai/codex) (Apache-2.0): referenced at a
   conceptual level for separating permission decisions from execution isolation. Codex is
   not a dependency and no Codex source is included.
+
+### Comparison projects, not integrated
+
 - [`laude-institute/harbor`](https://github.com/laude-institute/harbor): referenced for
   future black-box agent evaluation and trajectory interoperability, including ATIF. Harbor
   is not part of the MVP and no Harbor code is included.

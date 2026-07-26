@@ -2,8 +2,6 @@
 
 [English](README.md)
 
-[![CI](https://github.com/cf-x/mini-coding-agent-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/cf-x/mini-coding-agent-harness/actions/workflows/ci.yml)
-
 这是一个小型、可测试、可追踪的 Coding Agent Harness。项目不追求工具数量，而是
 把模型决策、权限判断、工具执行、运行轨迹和回归评测拆成清晰模块，回答一个具体问题：
 
@@ -18,6 +16,7 @@
 
 - 异步 Agent Loop 和最大轮数控制。
 - `read_file`、`write_file`、`edit_file`、`bash` 四个工具。
+- 可注入的 Local 和 Docker Bash Command Executor。
 - Pydantic 参数校验与统一 `ToolResult`。
 - Workspace 路径和符号链接越界检查。
 - 工具执行前的 `allow / ask / deny` 权限决策。
@@ -67,6 +66,18 @@ macOS 包装脚本把 OpenAI 风格的 `sk-` Key 和可选 Base URL 保存在登
 文件写入和普通 Shell 命令默认需要询问。`--auto-approve` 只应在你完全控制的
 Workspace 中使用。
 
+`bash` 默认仍在本机执行。若只想让 Bash 在短生命周期 Docker 容器中执行，请先在本机
+准备镜像，再显式选择 Docker Executor：
+
+```bash
+docker pull python:3.12-slim
+mini-harness run --executor docker --docker-image python:3.12-slim \
+  --workspace ./example-workspace "检查测试并修复缺陷。"
+```
+
+Harness 不会自动拉取镜像。CPU、内存和 PID 上限可通过 `--docker-cpus`、
+`--docker-memory-mb`、`--docker-pids-limit` 或 TOML 设置。
+
 ## 架构与执行链路
 
 ```text
@@ -93,10 +104,10 @@ Tool Call 都有且只有一个 Tool Result。
 ## CLI
 
 ```text
-mini-harness run TASK [--workspace PATH] [--config FILE] [--trace FILE]
+mini-harness run TASK [--workspace PATH] [--executor local|docker] [--config FILE]
 mini-harness replay TRACE [--workspace PATH] [--output-trace FILE]
 mini-harness eval [CASES_DIR] [--json]
-mini-harness live-eval [CASES_DIR] [--runs 3] [--validate-only]
+mini-harness live-eval [CASES_DIR] [--executor local|docker] [--validate-only]
 mini-harness trace TRACE
 ```
 
@@ -169,35 +180,56 @@ mini-harness live-eval evals/live_cases --validate-only
 已于 2026-07-26 在 macOS arm64、Python 3.12.13 环境验证：
 
 - Ruff Lint 与格式检查通过。
-- MyPy 严格类型检查通过，共检查 41 个源码/测试文件。
-- pytest：57 passed。
+- MyPy 严格类型检查通过，共检查 44 个源码/测试文件。
+- pytest：71 passed，包含 Workspace 隔离、最小环境、非 Root、默认禁网和超时清理的
+  真实 Docker 集成测试。
 - 确定性 Eval：10/10 Case 通过。
 
 <!-- VERIFIED_RESULTS_END -->
 
 ## 安全说明
 
-Policy Engine 是风险分类器，不是操作系统沙箱。路径解析和字符串规则无法隔离 Shell
-展开、解释器、子进程、挂载点、网络或未知二进制文件。不要在敏感主机上运行不可信任务。
-生产版本应把工具放入容器、虚拟机、SWE-ReX 或其他专用隔离环境。
+Policy Engine 是风险分类器，不是操作系统沙箱；默认 Local Executor 仍在宿主机运行
+Bash。路径解析和字符串规则无法隔离 Shell 展开、解释器、子进程、挂载点、网络或未知
+二进制文件。不要在敏感主机上使用 Local Executor 运行不可信任务。
+
+可选 Docker Executor **只隔离 Bash**：它只把解析后的 Workspace 可写挂载到
+`/workspace`，使用宿主非 Root UID/GID，默认禁网，设置 CPU、内存和 PID 上限，并且不
+传入宿主 API Key 或 `HOME`。File Tools 仍在宿主进程中运行；隔离强度仍依赖 Docker
+Daemon、镜像、宿主内核和配置，因此不是绝对安全边界。
 
 ## 参考、归属与复用说明
 
-本仓库是独立实现，没有复制以下项目的源码文件或大段实现：
+本仓库是独立实现。以下内容明确区分当前设计实际参考的仓库、仅评估但未集成的项目和
+运行依赖；本仓库没有复制这些项目的源码文件或大段实现。
+
+### 当前设计实际参考
 
 - [`shareAI-lab/learn-claude-code`](https://github.com/shareAI-lab/learn-claude-code)
   （MIT）：参考其递进式 Agent Loop、工具注册和权限流程教学思路。本项目重新设计为
   Runtime、Policy、Trace、Replay、Eval 等独立模块，不包含其源码。
 - [`openai/codex`](https://github.com/openai/codex)（Apache-2.0）：仅参考
   “权限决策”和“执行隔离”分层的设计思想，不依赖 Codex，也未包含其源码。
+
+### 仅作对比，当前未集成
+
 - [`laude-institute/harbor`](https://github.com/laude-institute/harbor)：作为后续
   黑盒 Agent Benchmark 和 ATIF 轨迹兼容方向，MVP 未集成。
 - [`SWE-agent/SWE-ReX`](https://github.com/SWE-agent/SWE-ReX)：仅作为后续
   Sandbox Adapter 候选，当前未集成。
 
-直接运行时依赖包括 OpenAI Python SDK、Anthropic Python SDK、Pydantic、Typer 和
-PyYAML；测试与质量
-检查使用 pytest、pytest-asyncio、Ruff 和 MyPy。版本约束见
+### 运行依赖
+
+- [`anthropics/anthropic-sdk-python`](https://github.com/anthropics/anthropic-sdk-python)：
+  可选 Anthropic API 调用。
+- [`openai/openai-python`](https://github.com/openai/openai-python)：OpenAI Responses
+  API 和 OpenAI-compatible Endpoint 调用。
+- [`pydantic/pydantic`](https://github.com/pydantic/pydantic)：Schema 与参数校验。
+- [`fastapi/typer`](https://github.com/fastapi/typer)：CLI。
+- [`yaml/pyyaml`](https://github.com/yaml/pyyaml)：Eval Case 文件。
+- pytest、pytest-asyncio、Ruff 和 MyPy：测试与质量检查。
+
+版本约束见
 [`pyproject.toml`](pyproject.toml)，各依赖仍遵循其各自许可证。
 
 ## 开发检查
