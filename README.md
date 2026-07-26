@@ -209,12 +209,15 @@ exit codes, not an LLM judge. For `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-l
 estimates use [OpenAI Standard API pricing](https://developers.openai.com/api/docs/pricing)
 and record that source with the result. A compatible gateway's actual bill may differ.
 
-A 15-attempt `gpt-5.6-terra` run completed on 2026-07-26 against commit `5d3a6bd`.
-The original strict rubric passed 7/15 attempts (46.7%) with Pass@3 of 60.0%. All 15 final
-workspaces passed their deterministic tests, but five otherwise-correct attempts used
-`write_file` instead of the rubric-required `edit_file`, and three reached the turn limit
-immediately after their tests passed. These are reported separately rather than folded into
-one optimistic score. See [the sanitized analysis](docs/live-eval-2026-07-26.md).
+Two versioned 15-attempt `gpt-5.6-terra` runs completed on 2026-07-26. v1 preserved the
+original strict result of 7/15 (46.7%) and exposed an over-specific edit-tool rubric plus a
+Python environment mismatch. v2 pinned the Harness interpreter, added layered metrics and a
+bounded finalization path, and accepted either supported file-modification tool. It passed
+13/15 strictly (86.7%), reached 100% Pass@3, completed 15/15 runtimes, and retained 15/15
+artifact correctness. The remaining two failures were isolated `read_file` contract
+deviations. The rubric change means the strict scores are versioned rather than a pure
+model-only comparison. See the [v1 analysis](docs/live-eval-2026-07-26.md) and
+[sanitized v1/v2 comparison](docs/live-eval-v1-v2-comparison.md).
 
 ## Inspectable evidence
 
@@ -245,7 +248,7 @@ Verified on 2026-07-26 with Python 3.12.13 on macOS arm64:
 
 - Ruff lint and format checks: passed.
 - MyPy strict check: passed for 41 checked source/test files.
-- pytest: 50 passed.
+- pytest: 57 passed.
 - deterministic evals: 10/10 cases passed.
 - task pass rate: 100.0%.
 - average turns: 2.20.
@@ -254,10 +257,12 @@ Verified on 2026-07-26 with Python 3.12.13 on macOS arm64:
 - policy denials: 2.
 - replay match rate: 50.0%.
 - average run duration: 22.30 ms in one local sample.
-- live eval strict task pass rate: 46.7% (7/15).
-- live eval Pass@3: 60.0% (3/5 cases).
-- live eval deterministic workspace correctness: 100.0% (15/15).
-- live eval estimated cost: $0.2890 using recorded OpenAI Standard rates.
+- live eval v1 strict pass rate: 46.7% (7/15), Pass@3 60.0%.
+- live eval v2 strict pass rate: 86.7% (13/15), Pass@3 100.0%.
+- live eval v2 artifact correctness: 100.0% (15/15).
+- live eval v2 runtime completion: 100.0% (15/15).
+- live eval v2 tool contract rate: 86.7% (13/15).
+- live eval v2 estimated cost: $0.2046 using recorded OpenAI Standard rates.
 
 The tool-error rate includes intentional error, timeout, and unknown-tool results. The
 replay-match rate includes one intentionally divergent replay, so a 50% raw match rate is

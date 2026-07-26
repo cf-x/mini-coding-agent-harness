@@ -147,11 +147,13 @@ mini-harness live-eval evals/live_cases --runs 3
 [OpenAI Standard API 官方价格](https://developers.openai.com/api/docs/pricing)，结果中
 会保存价格来源；兼容网关实际账单可能不同。
 
-已于 2026-07-26 针对 Commit `5d3a6bd` 完成 `gpt-5.6-terra` 的 15 次真实运行。
-原始严格口径通过 7/15（46.7%），Pass@3 为 60.0%。15/15 最终 Workspace 都通过了
-确定性测试，但其中 5 次因为使用 `write_file` 而不是评测指定的 `edit_file` 被判失败，
-另有 3 次在测试通过后刚好达到轮数上限。项目分别报告这些口径，不把它们合并成一个
-乐观数字。详见[脱敏分析报告](docs/live-eval-2026-07-26.md)。
+已于 2026-07-26 完成两组版本化的 `gpt-5.6-terra` 15 次真实运行。v1 保留原始
+7/15（46.7%）严格结果，并暴露了过度限定编辑工具和 Python 环境漂移。v2 固定 Harness
+解释器、增加分层指标和有界收尾轮，并允许两种受支持的文件修改工具：严格通过
+13/15（86.7%），Pass@3 100%，Runtime 完成 15/15，产物正确 15/15。剩余两次失败都是
+未调用专用 `read_file` 的工具契约偏差。由于 Rubric 已版本化调整，不能把严格分数变化
+完全归因于模型能力。详见 [v1 脱敏分析](docs/live-eval-2026-07-26.md)和
+[v1/v2 脱敏对比](docs/live-eval-v1-v2-comparison.md)。
 
 ### 可检查证据
 
@@ -168,7 +170,7 @@ mini-harness live-eval evals/live_cases --runs 3
 
 - Ruff Lint 与格式检查通过。
 - MyPy 严格类型检查通过，共检查 41 个源码/测试文件。
-- pytest：50 passed。
+- pytest：57 passed。
 - 确定性 Eval：10/10 Case 通过。
 - task pass rate：100.0%。
 - average turns：2.20。
@@ -177,10 +179,12 @@ mini-harness live-eval evals/live_cases --runs 3
 - policy denials：2。
 - replay match rate：50.0%。
 - 单次本机样本 average run duration：26.40 ms。
-- Live Eval 严格 task pass rate：46.7%（7/15）。
-- Live Eval Pass@3：60.0%（3/5 Case）。
-- Live Eval 确定性 Workspace 正确率：100.0%（15/15）。
-- Live Eval 按记录的 OpenAI Standard 单价估算：`$0.2890`。
+- Live Eval v1 严格通过率：46.7%（7/15），Pass@3 60.0%。
+- Live Eval v2 严格通过率：86.7%（13/15），Pass@3 100.0%。
+- Live Eval v2 产物正确率：100.0%（15/15）。
+- Live Eval v2 Runtime 完成率：100.0%（15/15）。
+- Live Eval v2 工具契约通过率：86.7%（13/15）。
+- Live Eval v2 按记录的 OpenAI Standard 单价估算：`$0.2046`。
 
 `tool_error_rate` 包含故意制造的错误、超时和未知工具结果；`replay_match_rate`
 包含一个预期发生分歧的 Case，因此原始 Match Rate 为 50% 与所有 Replay 断言通过并不
