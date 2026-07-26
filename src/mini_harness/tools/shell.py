@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import sys
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +15,20 @@ from mini_harness.tools.base import Tool, ToolContext, ToolExecution
 
 class BashArguments(BaseModel):
     command: str = Field(min_length=1)
+
+
+def shell_environment(workspace: Path) -> dict[str, str]:
+    """Build the minimal environment shared by agent and evaluator commands."""
+
+    allowed = ("PATH", "LANG", "LC_ALL", "TERM", "TMPDIR")
+    environment = {name: os.environ[name] for name in allowed if name in os.environ}
+    interpreter_dir = str(Path(sys.executable).resolve().parent)
+    inherited_path = environment.get("PATH", "")
+    environment["PATH"] = (
+        f"{interpreter_dir}{os.pathsep}{inherited_path}" if inherited_path else interpreter_dir
+    )
+    environment["HOME"] = str(workspace)
+    return environment
 
 
 class BashTool(Tool):
@@ -50,7 +66,4 @@ class BashTool(Tool):
 
     @staticmethod
     def _minimal_environment(context: ToolContext) -> dict[str, str]:
-        allowed = ("PATH", "LANG", "LC_ALL", "TERM", "TMPDIR")
-        environment = {name: os.environ[name] for name in allowed if name in os.environ}
-        environment["HOME"] = str(context.workspace)
-        return environment
+        return shell_environment(context.workspace)

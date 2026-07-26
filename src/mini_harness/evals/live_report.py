@@ -16,11 +16,15 @@ def _rate(value: float | None) -> str:
 
 
 def format_live_text_report(suite: LiveSuiteResult) -> str:
-    rows = ["CASE                 RUN  RESULT  TURNS  TOOLS  TOKENS  COST_USD"]
+    rows = ["CASE                 RUN  STRICT  ART  RUN  TOOL  TURNS  TOOLS  TOKENS  COST_USD"]
     for attempt in suite.attempts:
         rows.append(
             f"{attempt.case_name:<20} {attempt.attempt:>3} "
-            f"{'PASS' if attempt.passed else 'FAIL':<6} {attempt.turns:>5} "
+            f"{'PASS' if attempt.passed else 'FAIL':<6} "
+            f"{'PASS' if attempt.artifact_passed else 'FAIL':<4} "
+            f"{'PASS' if attempt.runtime_passed else 'FAIL':<4} "
+            f"{'PASS' if attempt.tool_contract_passed else 'FAIL':<5} "
+            f"{attempt.turns:>5} "
             f"{attempt.tool_calls:>6} {attempt.usage.total_tokens:>7} "
             f"{_cost(attempt.estimated_cost_usd):>13}"
         )
@@ -36,8 +40,14 @@ def format_live_text_report(suite: LiveSuiteResult) -> str:
             f"model: {suite.model}",
             f"model_backend: {suite.model_backend}",
             f"git_commit: {suite.git_commit}",
-            f"task_pass_rate: {metrics['task_pass_rate']:.1%}",
-            f"pass_at_{suite.runs_per_case}: {metrics['pass_at_k']:.1%}",
+            f"python_version: {suite.python_version}",
+            f"strict_pass_rate: {metrics['task_pass_rate']:.1%}",
+            f"strict_pass_at_{suite.runs_per_case}: {metrics['pass_at_k']:.1%}",
+            f"artifact_pass_rate: {metrics['artifact_pass_rate']:.1%}",
+            f"artifact_pass_at_{suite.runs_per_case}: {metrics['artifact_pass_at_k']:.1%}",
+            f"runtime_pass_rate: {metrics['runtime_pass_rate']:.1%}",
+            f"runtime_pass_at_{suite.runs_per_case}: {metrics['runtime_pass_at_k']:.1%}",
+            f"tool_contract_pass_rate: {metrics['tool_contract_pass_rate']:.1%}",
             f"average_turns: {metrics['average_turns']:.2f}",
             f"average_tool_calls: {metrics['average_tool_calls']:.2f}",
             f"input_tokens: {metrics['input_tokens']}",
@@ -61,6 +71,7 @@ def format_live_markdown_report(suite: LiveSuiteResult) -> str:
         f"- Model: `{suite.model}`",
         f"- Backend: `{suite.model_backend}`",
         f"- Git commit: `{suite.git_commit}`",
+        f"- Python: `{suite.python_version}`",
         f"- Started: `{suite.started_at.isoformat()}`",
         f"- Completed: `{suite.completed_at.isoformat()}`",
         f"- Runs per case: `{suite.runs_per_case}`",
@@ -70,9 +81,18 @@ def format_live_markdown_report(suite: LiveSuiteResult) -> str:
         "| Metric | Value |",
         "|---|---:|",
         f"| Attempts | {metrics['attempts']} |",
-        f"| Passed attempts | {metrics['passed_attempts']} |",
-        f"| Task pass rate | {metrics['task_pass_rate']:.1%} |",
-        f"| Pass@{suite.runs_per_case} | {metrics['pass_at_k']:.1%} |",
+        f"| Strict passed attempts | {metrics['passed_attempts']} |",
+        f"| Strict pass rate | {metrics['task_pass_rate']:.1%} |",
+        f"| Strict Pass@{suite.runs_per_case} | {metrics['pass_at_k']:.1%} |",
+        f"| Artifact pass rate | {metrics['artifact_pass_rate']:.1%} |",
+        f"| Artifact Pass@{suite.runs_per_case} | {metrics['artifact_pass_at_k']:.1%} |",
+        f"| Runtime pass rate | {metrics['runtime_pass_rate']:.1%} |",
+        f"| Runtime Pass@{suite.runs_per_case} | {metrics['runtime_pass_at_k']:.1%} |",
+        f"| Tool contract pass rate | {metrics['tool_contract_pass_rate']:.1%} |",
+        (
+            f"| Tool contract Pass@{suite.runs_per_case} | "
+            f"{metrics['tool_contract_pass_at_k']:.1%} |"
+        ),
         f"| Average turns | {metrics['average_turns']:.2f} |",
         f"| Average tool calls | {metrics['average_tool_calls']:.2f} |",
         f"| Input tokens | {metrics['input_tokens']} |",
@@ -81,16 +101,20 @@ def format_live_markdown_report(suite: LiveSuiteResult) -> str:
         "",
         "## Per Case",
         "",
-        "| Case | Passed | Attempts | Pass Rate |",
-        "|---|---:|---:|---:|",
+        "| Case | Strict | Artifact | Runtime | Tool contract | Attempts |",
+        "|---|---:|---:|---:|---:|---:|",
     ]
     attempts_by_case: dict[str, list[LiveAttemptResult]] = defaultdict(list)
     for attempt in suite.attempts:
         attempts_by_case[attempt.case_name].append(attempt)
     for case_name, attempts in sorted(attempts_by_case.items()):
-        passed = sum(attempt.passed for attempt in attempts)
+        strict = sum(attempt.passed for attempt in attempts)
+        artifact = sum(attempt.artifact_passed for attempt in attempts)
+        runtime = sum(attempt.runtime_passed for attempt in attempts)
+        contract = sum(attempt.tool_contract_passed for attempt in attempts)
         lines.append(
-            f"| `{case_name}` | {passed} | {len(attempts)} | {passed / len(attempts):.1%} |"
+            f"| `{case_name}` | {strict}/{len(attempts)} | {artifact}/{len(attempts)} | "
+            f"{runtime}/{len(attempts)} | {contract}/{len(attempts)} | {len(attempts)} |"
         )
 
     lines.extend(

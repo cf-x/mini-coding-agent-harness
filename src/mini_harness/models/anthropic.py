@@ -12,7 +12,8 @@ from mini_harness.tools.base import ToolDefinition
 
 DEFAULT_SYSTEM_PROMPT = """You are a coding agent working inside one workspace.
 Use the provided tools to inspect and modify the workspace. Keep changes scoped to the task.
-When the task is complete, return a concise final response."""
+Run the relevant tests before finishing.
+After the relevant tests pass, do not call more tools. Return a concise final response."""
 
 
 class AnthropicModelClient:

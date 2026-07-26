@@ -208,13 +208,14 @@ async def test_codex_client_profile_uses_stateless_http_continuation() -> None:
                 tool_status=ToolResultStatus.SUCCESS,
             ),
         ],
-        tools,
+        [],
     )
 
     initial_request, continued_request = responses.requests
     assert initial_request["store"] is False
     assert initial_request["include"] == ["reasoning.encrypted_content"]
     assert "previous_response_id" not in continued_request
+    assert continued_request["tools"] == []
     assert continued_request["input"][0] == {"role": "user", "content": "read note"}
     assert continued_request["input"][1] is first_output
     assert continued_request["input"][2]["type"] == "function_call_output"

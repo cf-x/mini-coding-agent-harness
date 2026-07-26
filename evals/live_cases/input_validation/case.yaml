@@ -9,6 +9,8 @@ expected:
   command_exit_code:
     - command: python3 -m unittest -q
       value: 0
-  tool_called: [read_file, edit_file, bash]
+  tool_called: [read_file, bash]
+  tool_called_any:
+    - [edit_file, write_file]
   max_tool_calls: 12
   run_status_equals: completed

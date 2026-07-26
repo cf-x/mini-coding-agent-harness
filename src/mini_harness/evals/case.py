@@ -37,6 +37,7 @@ class ExpectedOutcomes(BaseModel):
     file_contains: list[FileContainsExpectation] = Field(default_factory=list)
     command_exit_code: list[CommandExitCodeExpectation] = Field(default_factory=list)
     tool_called: list[str] = Field(default_factory=list)
+    tool_called_any: list[list[str]] = Field(default_factory=list)
     tool_not_called: list[str] = Field(default_factory=list)
     policy_decision_equals: list[PolicyDecisionExpectation] = Field(default_factory=list)
     max_tool_calls: int | None = None
@@ -54,6 +55,7 @@ class EvalCase(BaseModel):
     task: str
     fixture: str = "fixture"
     max_turns: int = Field(default=8, ge=1)
+    finalization_turn: bool = True
     tool_timeout_seconds: float = Field(default=5, gt=0)
     max_output_chars: int = Field(default=20_000, ge=64)
     write_policy: Literal["allow", "ask", "deny"] = "allow"

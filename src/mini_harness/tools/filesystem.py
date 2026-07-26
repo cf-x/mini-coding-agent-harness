@@ -39,7 +39,10 @@ class ReadFileTool(Tool):
 
 class WriteFileTool(Tool):
     name = "write_file"
-    description = "Write a UTF-8 text file inside the workspace."
+    description = (
+        "Create a new UTF-8 file or completely rewrite one inside the workspace. "
+        "Prefer edit_file for a local change to an existing file."
+    )
     arguments_model = WriteFileArguments
 
     async def execute(self, arguments: BaseModel, context: ToolContext) -> ToolExecution:
@@ -53,7 +56,7 @@ class WriteFileTool(Tool):
 
 class EditFileTool(Tool):
     name = "edit_file"
-    description = "Replace an exact text fragment in a UTF-8 file inside the workspace."
+    description = "Make a precise local change to an existing UTF-8 file by replacing exact text."
     arguments_model = EditFileArguments
 
     async def execute(self, arguments: BaseModel, context: ToolContext) -> ToolExecution:

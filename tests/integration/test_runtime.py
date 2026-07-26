@@ -18,6 +18,7 @@ def runtime(
     responses: list[ModelResponse],
     *,
     max_turns: int = 4,
+    finalization_turn: bool = True,
     write_policy: str = "allow",
     shell_policy: str = "allow",
     approve: bool = True,
@@ -27,6 +28,7 @@ def runtime(
         workspace=tmp_path,
         trace_dir=tmp_path / "traces",
         max_turns=max_turns,
+        finalization_turn=finalization_turn,
         write_policy=write_policy,
         shell_policy=shell_policy,
         sensitive_paths=sensitive_paths or [],
@@ -115,7 +117,12 @@ async def test_runtime_stops_at_max_turns(tmp_path: Path) -> None:
     tool_response = ModelResponse(
         tool_calls=[ToolCall(id="read", name="read_file", arguments={"path": "a.txt"})]
     )
-    agent = runtime(tmp_path, [tool_response, tool_response], max_turns=2)
+    agent = runtime(
+        tmp_path,
+        [tool_response, tool_response],
+        max_turns=2,
+        finalization_turn=False,
+    )
 
     result = await agent.run("loop")
 
@@ -125,6 +132,50 @@ async def test_runtime_stops_at_max_turns(tmp_path: Path) -> None:
     terminal = TraceReader(result.trace_path).read()[-1]
     assert terminal["type"] == "run_finished"
     assert terminal["status"] == "max_turns"
+
+
+@pytest.mark.asyncio
+async def test_runtime_allows_one_text_only_finalization_turn(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("x", encoding="utf-8")
+    agent = runtime(
+        tmp_path,
+        [
+            ModelResponse(
+                tool_calls=[ToolCall(id="read", name="read_file", arguments={"path": "a.txt"})]
+            ),
+            ModelResponse(content="tests passed; task complete"),
+        ],
+        max_turns=1,
+    )
+
+    result = await agent.run("read and summarize")
+    events = TraceReader(result.trace_path).read()
+    final_request = next(
+        event
+        for event in events
+        if event["type"] == "model_request" and event.get("finalization") is True
+    )
+
+    assert result.status is RunStatus.COMPLETED
+    assert result.turns == 2
+    assert result.tool_call_count == 1
+    assert result.final_text == "tests passed; task complete"
+    assert final_request["tools"] == []
+
+
+@pytest.mark.asyncio
+async def test_finalization_turn_does_not_execute_more_tools(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("x", encoding="utf-8")
+    tool_response = ModelResponse(
+        tool_calls=[ToolCall(id="read", name="read_file", arguments={"path": "a.txt"})]
+    )
+    agent = runtime(tmp_path, [tool_response, tool_response], max_turns=1)
+
+    result = await agent.run("keep reading")
+
+    assert result.status is RunStatus.MAX_TURNS
+    assert result.turns == 2
+    assert result.tool_call_count == 1
 
 
 class FailingModel:

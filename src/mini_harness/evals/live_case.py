@@ -20,6 +20,7 @@ class LiveEvalCase(BaseModel):
     fixture: str = "fixture"
     tags: list[str] = Field(default_factory=list)
     max_turns: int = Field(default=8, ge=1, le=100)
+    finalization_turn: bool = True
     tool_timeout_seconds: float = Field(default=10, gt=0, le=300)
     max_output_chars: int = Field(default=20_000, ge=64)
     write_policy: Literal["allow", "ask", "deny"] = "allow"

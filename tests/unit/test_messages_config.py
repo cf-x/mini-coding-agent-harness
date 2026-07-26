@@ -65,6 +65,7 @@ def test_openai_environment_configuration(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("OPENAI_BASE_URL", "https://gateway.example/v1")
     monkeypatch.setenv("MINI_HARNESS_OPENAI_TOOL_MODE", "prompt")
     monkeypatch.setenv("MINI_HARNESS_OPENAI_CLIENT_PROFILE", "codex")
+    monkeypatch.setenv("MINI_HARNESS_FINALIZATION_TURN", "false")
 
     config = load_config()
 
@@ -72,6 +73,7 @@ def test_openai_environment_configuration(monkeypatch: pytest.MonkeyPatch) -> No
     assert config.openai_base_url == "https://gateway.example/v1"
     assert config.openai_tool_mode == "prompt"
     assert config.openai_client_profile == "codex"
+    assert config.finalization_turn is False
 
 
 def test_anthropic_adapter_groups_parallel_tool_results() -> None:

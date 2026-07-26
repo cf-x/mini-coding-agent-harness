@@ -15,7 +15,7 @@ DEFAULT_OPENAI_MODEL = "gpt-5.6-terra"
 DEFAULT_SYSTEM_PROMPT = """You are a coding agent working inside one workspace.
 Use the provided tools to inspect and modify the workspace. Keep changes scoped to the task.
 Run the relevant tests before finishing.
-When the task is complete, return a concise final response."""
+After the relevant tests pass, do not call more tools. Return a concise final response."""
 OpenAIToolMode = Literal["auto", "function", "prompt"]
 OpenAIClientProfile = Literal["standard", "codex"]
 PROMPT_TOOL_RESPONSE_SHAPE = (
@@ -57,8 +57,7 @@ class OpenAIModelClient:
         if client_profile == "codex":
             client_options["default_headers"] = {
                 "User-Agent": (
-                    "codex_cli_rs/0.114.0 (macOS 15.0; arm64) "
-                    "Terminal.app (codex_cli_rs; 0.114.0)"
+                    "codex_cli_rs/0.114.0 (macOS 15.0; arm64) Terminal.app (codex_cli_rs; 0.114.0)"
                 ),
                 "originator": "codex_cli_rs",
                 "x-codex-window-id": str(uuid.uuid4()),

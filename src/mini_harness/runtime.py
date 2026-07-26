@@ -87,6 +87,7 @@ class AgentRuntime:
                 recorder.record(
                     "model_request",
                     turn=turn,
+                    finalization=False,
                     message_count=len(messages),
                     tools=[definition.name for definition in self.tools.definitions],
                 )
@@ -97,6 +98,7 @@ class AgentRuntime:
                 recorder.record(
                     "model_response",
                     turn=turn,
+                    finalization=False,
                     response_kind=response.kind,
                     tool_names=[call.name for call in response.tool_calls],
                     response=response.model_dump(mode="json"),
@@ -128,6 +130,45 @@ class AgentRuntime:
                     )
                     tool_results.append(result)
                     messages.append(Message.from_tool_result(result))
+
+            if self.config.finalization_turn:
+                turns = self.config.max_turns + 1
+                recorder.record(
+                    "model_request",
+                    turn=turns,
+                    finalization=True,
+                    message_count=len(messages),
+                    tools=[],
+                )
+                response = await self.model.complete(
+                    [message.model_copy(deep=True) for message in messages],
+                    [],
+                )
+                recorder.record(
+                    "model_response",
+                    turn=turns,
+                    finalization=True,
+                    response_kind=response.kind,
+                    tool_names=[call.name for call in response.tool_calls],
+                    response=response.model_dump(mode="json"),
+                )
+                messages.append(
+                    Message(
+                        role="assistant",
+                        content=response.content,
+                        tool_calls=response.tool_calls,
+                    )
+                )
+                if not response.tool_calls:
+                    return self._finish(
+                        recorder=recorder,
+                        started=started,
+                        status=RunStatus.COMPLETED,
+                        turns=turns,
+                        messages=messages,
+                        tool_results=tool_results,
+                        final_text=response.content,
+                    )
 
             return self._finish(
                 recorder=recorder,
