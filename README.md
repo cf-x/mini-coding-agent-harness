@@ -14,6 +14,11 @@ The project focuses on one engineering question:
 
 It implements the harness around a model, not a new model or a production sandbox.
 
+![Deterministic terminal demo](docs/terminal-demo.gif)
+
+The demo shows the offline conformance eval, sanitized traces, replay divergence, and
+credential-free live-case validation. It does not depict a fabricated real-model run.
+
 ## What is included
 
 - A provider-neutral async agent loop with bounded turns.

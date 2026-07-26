@@ -9,6 +9,11 @@
 
 > 如何让最小 Coding Agent 具备可观察的执行过程、受控的失败边界和可重复的回归测试？
 
+![确定性终端演示](docs/terminal-demo.gif)
+
+演示内容是离线 Conformance Eval、脱敏 Trace、Replay Divergence 和不需要凭据的 Live Case
+校验，不包含伪造的真实模型运行。
+
 ## 核心能力
 
 - 异步 Agent Loop 和最大轮数控制。
