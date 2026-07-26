@@ -62,6 +62,11 @@ mini-harness run --workspace ./example-workspace "修复失败测试。"
 工具时，可以回退到 JSON Prompt 协议；`function` 可强制原生模式，`prompt` 可显式选择
 兼容模式。报告会记录 Backend，不把 Prompt 模式描述成原生 Function Calling。
 
+部分网关会把 OpenAI 订阅账号限制为 Codex Responses 客户端契约。此时需要显式使用
+`--client-profile codex`；默认的 `standard` 仍保留普通 OpenAI SDK 请求头。该设置不包含
+凭据，也不改变 `OPENAI_API_KEY` 的读取方式。Codex 档案使用无状态 HTTP 续接，因为部分
+兼容网关只在 Responses WebSocket v2 中支持 `previous_response_id`。
+
 文件写入和普通 Shell 命令默认需要询问。`--auto-approve` 只应在你完全控制的
 Workspace 中使用。
 
@@ -142,9 +147,11 @@ mini-harness live-eval evals/live_cases --runs 3
 [OpenAI Standard API 官方价格](https://developers.openai.com/api/docs/pricing)，结果中
 会保存价格来源；兼容网关实际账单可能不同。
 
-当前 Revision 不公布 15 次模型成功率：验证过程中，所提供兼容端点开始对所有生成请求
-返回 HTTP 403。Runner、五个 Case、Usage、官方价估算和 Provider Error 证据均已实现，
-但不会伪造成功结果。
+已于 2026-07-26 针对 Commit `5d3a6bd` 完成 `gpt-5.6-terra` 的 15 次真实运行。
+原始严格口径通过 7/15（46.7%），Pass@3 为 60.0%。15/15 最终 Workspace 都通过了
+确定性测试，但其中 5 次因为使用 `write_file` 而不是评测指定的 `edit_file` 被判失败，
+另有 3 次在测试通过后刚好达到轮数上限。项目分别报告这些口径，不把它们合并成一个
+乐观数字。详见[脱敏分析报告](docs/live-eval-2026-07-26.md)。
 
 ### 可检查证据
 
@@ -161,7 +168,7 @@ mini-harness live-eval evals/live_cases --runs 3
 
 - Ruff Lint 与格式检查通过。
 - MyPy 严格类型检查通过，共检查 41 个源码/测试文件。
-- pytest：48 passed。
+- pytest：50 passed。
 - 确定性 Eval：10/10 Case 通过。
 - task pass rate：100.0%。
 - average turns：2.20。
@@ -170,6 +177,10 @@ mini-harness live-eval evals/live_cases --runs 3
 - policy denials：2。
 - replay match rate：50.0%。
 - 单次本机样本 average run duration：26.40 ms。
+- Live Eval 严格 task pass rate：46.7%（7/15）。
+- Live Eval Pass@3：60.0%（3/5 Case）。
+- Live Eval 确定性 Workspace 正确率：100.0%（15/15）。
+- Live Eval 按记录的 OpenAI Standard 单价估算：`$0.2890`。
 
 `tool_error_rate` 包含故意制造的错误、超时和未知工具结果；`replay_match_rate`
 包含一个预期发生分歧的 Case，因此原始 Match Rate 为 50% 与所有 Replay 断言通过并不

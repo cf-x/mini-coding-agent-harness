@@ -209,10 +209,12 @@ exit codes, not an LLM judge. For `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-l
 estimates use [OpenAI Standard API pricing](https://developers.openai.com/api/docs/pricing)
 and record that source with the result. A compatible gateway's actual bill may differ.
 
-This revision does not publish a 15-attempt model success rate because the supplied compatible
-endpoint began returning HTTP 403 for all generation requests during validation. The runner,
-cases, usage accounting, official-price estimate, and provider-error evidence are implemented;
-no successful live result is fabricated.
+A 15-attempt `gpt-5.6-terra` run completed on 2026-07-26 against commit `5d3a6bd`.
+The original strict rubric passed 7/15 attempts (46.7%) with Pass@3 of 60.0%. All 15 final
+workspaces passed their deterministic tests, but five otherwise-correct attempts used
+`write_file` instead of the rubric-required `edit_file`, and three reached the turn limit
+immediately after their tests passed. These are reported separately rather than folded into
+one optimistic score. See [the sanitized analysis](docs/live-eval-2026-07-26.md).
 
 ## Inspectable evidence
 
@@ -243,7 +245,7 @@ Verified on 2026-07-26 with Python 3.12.13 on macOS arm64:
 
 - Ruff lint and format checks: passed.
 - MyPy strict check: passed for 41 checked source/test files.
-- pytest: 48 passed.
+- pytest: 50 passed.
 - deterministic evals: 10/10 cases passed.
 - task pass rate: 100.0%.
 - average turns: 2.20.
@@ -252,6 +254,10 @@ Verified on 2026-07-26 with Python 3.12.13 on macOS arm64:
 - policy denials: 2.
 - replay match rate: 50.0%.
 - average run duration: 22.30 ms in one local sample.
+- live eval strict task pass rate: 46.7% (7/15).
+- live eval Pass@3: 60.0% (3/5 cases).
+- live eval deterministic workspace correctness: 100.0% (15/15).
+- live eval estimated cost: $0.2890 using recorded OpenAI Standard rates.
 
 The tool-error rate includes intentional error, timeout, and unknown-tool results. The
 replay-match rate includes one intentionally divergent replay, so a 50% raw match rate is
