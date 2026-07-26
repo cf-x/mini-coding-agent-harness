@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from mini_harness.evals.case import (
     CommandExitCodeExpectation,
+    ExpectedOutcomes,
     FileContainsExpectation,
     PolicyDecisionExpectation,
 )
@@ -240,3 +241,28 @@ class ToolStatusEquals:
             passed=self.expected in statuses,
             message=f"{self.tool_name} statuses {statuses}, expected {self.expected}",
         )
+
+
+def build_evaluators(expected: ExpectedOutcomes) -> list[Evaluator]:
+    """Build the shared deterministic assertions for scripted and live evals."""
+
+    evaluators: list[Evaluator] = []
+    evaluators.extend(FileExists(path) for path in expected.file_exists)
+    evaluators.extend(FileContains(item) for item in expected.file_contains)
+    evaluators.extend(CommandExitCode(item) for item in expected.command_exit_code)
+    evaluators.extend(ToolCalled(name) for name in expected.tool_called)
+    evaluators.extend(ToolNotCalled(name) for name in expected.tool_not_called)
+    evaluators.extend(PolicyDecisionEquals(item) for item in expected.policy_decision_equals)
+    if expected.max_tool_calls is not None:
+        evaluators.append(MaxToolCalls(expected.max_tool_calls))
+    if expected.run_status_equals is not None:
+        evaluators.append(RunStatusEquals(expected.run_status_equals))
+    evaluators.extend(ToolOutputTruncated(name) for name in expected.truncated_tools)
+    evaluators.extend(
+        ToolStatusEquals(name, status) for name, status in expected.tool_status_equals.items()
+    )
+    if expected.replay is not None:
+        evaluators.append(ReplayMatches(expected.replay.matches))
+        if expected.replay.divergence_turn is not None:
+            evaluators.append(DivergenceTurnEquals(expected.replay.divergence_turn))
+    return evaluators

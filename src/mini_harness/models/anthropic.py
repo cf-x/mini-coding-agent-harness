@@ -7,7 +7,7 @@ from typing import Any, cast
 from anthropic import AsyncAnthropic
 from anthropic.types import MessageParam
 
-from mini_harness.messages import Message, ModelResponse, ToolCall
+from mini_harness.messages import Message, ModelResponse, ModelUsage, ToolCall
 from mini_harness.tools.base import ToolDefinition
 
 DEFAULT_SYSTEM_PROMPT = """You are a coding agent working inside one workspace.
@@ -60,6 +60,17 @@ class AnthropicModelClient:
             content="\n".join(text_parts),
             tool_calls=tool_calls,
             stop_reason=response.stop_reason,
+            usage=ModelUsage(
+                input_tokens=(
+                    response.usage.input_tokens
+                    + (response.usage.cache_creation_input_tokens or 0)
+                    + (response.usage.cache_read_input_tokens or 0)
+                ),
+                output_tokens=response.usage.output_tokens,
+                cache_creation_input_tokens=response.usage.cache_creation_input_tokens or 0,
+                cache_read_input_tokens=response.usage.cache_read_input_tokens or 0,
+                request_count=1,
+            ),
         )
 
     @staticmethod

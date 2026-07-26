@@ -4,7 +4,10 @@ import pytest
 from typer.testing import CliRunner
 
 from mini_harness.cli import app
+from mini_harness.evals.live_runner import LiveEvalRunner, official_openai_pricing
 from mini_harness.evals.runner import EvalRunner
+from mini_harness.messages import ModelResponse, ModelUsage, ToolCall
+from mini_harness.models.replay import ReplayModelClient
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CASES_DIR = PROJECT_ROOT / "evals" / "cases"
@@ -33,5 +36,82 @@ def test_cli_help_lists_primary_workflows() -> None:
     result = CliRunner().invoke(app, ["--help"])
 
     assert result.exit_code == 0
-    for command in ("run", "replay", "eval", "trace"):
+    for command in ("run", "replay", "eval", "live-eval", "trace"):
         assert command in result.output
+
+
+def test_live_eval_validate_only_needs_no_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    result = CliRunner().invoke(
+        app,
+        ["live-eval", str(PROJECT_ROOT / "evals" / "live_cases"), "--validate-only"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "validated 5 live eval cases" in result.output
+    assert "no model requests sent" in result.output
+
+
+@pytest.mark.asyncio
+async def test_live_eval_persists_incremental_reports(tmp_path: Path) -> None:
+    cases = tmp_path / "cases"
+    case_dir = cases / "small_fix"
+    fixture = case_dir / "fixture"
+    fixture.mkdir(parents=True)
+    (fixture / "value.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (case_dir / "case.yaml").write_text(
+        """
+name: small_fix
+description: Change a constant.
+task: Change VALUE to 2.
+expected:
+  file_contains:
+    - path: value.py
+      text: "VALUE = 2"
+  run_status_equals: completed
+""".strip(),
+        encoding="utf-8",
+    )
+    usage = ModelUsage(input_tokens=100, output_tokens=20, request_count=1)
+    responses = [
+        ModelResponse(
+            tool_calls=[
+                ToolCall(
+                    id="edit",
+                    name="edit_file",
+                    arguments={
+                        "path": "value.py",
+                        "old_text": "VALUE = 1",
+                        "new_text": "VALUE = 2",
+                    },
+                )
+            ],
+            usage=usage,
+        ),
+        ModelResponse(content="done", usage=usage),
+    ]
+    output = tmp_path / "output"
+    runner = LiveEvalRunner(
+        cases_dir=cases,
+        output_dir=output,
+        model_factory=lambda: ReplayModelClient(responses),
+        model_name="gpt-5.6-terra",
+        model_backend="test-replay",
+        runs_per_case=2,
+        git_commit="abc123",
+    )
+
+    suite = await runner.run_all()
+
+    assert len(suite.attempts) == 2
+    assert all(attempt.passed for attempt in suite.attempts)
+    assert suite.total_usage.input_tokens == 400
+    assert suite.pricing == official_openai_pricing("gpt-5.6-terra")
+    assert suite.total_estimated_cost_usd == 0.0022
+    assert (output / "results.json").is_file()
+    markdown = (output / "README.md").read_text(encoding="utf-8")
+    assert "OpenAI Standard API rates" in markdown
+    assert "100.0%" in markdown

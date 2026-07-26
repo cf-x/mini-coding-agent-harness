@@ -1,0 +1,13 @@
+name: missing_path_recovery
+description: Recovers from a stale file path, locates the implementation, and fixes it.
+task: First inspect formatter.py at the workspace root. If that stale path is missing, locate the real format_title() implementation, fix it according to the tests, and run the relevant tests.
+tags: [python, recovery, navigation, tests]
+expected:
+  command_exit_code:
+    - command: python3 -m unittest -q
+      value: 0
+  tool_called: [read_file, edit_file, bash]
+  tool_status_equals:
+    read_file: error
+  max_tool_calls: 14
+  run_status_equals: completed

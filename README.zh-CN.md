@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+[![CI](https://github.com/cf-x/mini-coding-agent-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/cf-x/mini-coding-agent-harness/actions/workflows/ci.yml)
+
 这是一个小型、可测试、可追踪的 Coding Agent Harness。项目不追求工具数量，而是
 把模型决策、权限判断、工具执行、运行轨迹和回归评测拆成清晰模块，回答一个具体问题：
 
@@ -19,6 +21,8 @@
 - 使用历史模型响应驱动 Runtime 的离线 Replay。
 - 对规范化 Tool Call 定位首个轨迹分歧。
 - 十个不请求真实模型的确定性 Eval Case。
+- OpenAI Responses、可选 Prompt 工具兼容模式、Anthropic 和 Replay Model Client。
+- 五个带确定性验收与增量报告的 Live Coding Case。
 
 项目明确不做多 Agent、Task DAG、MCP、Web UI、Durable Execution 或生产级 Sandbox。
 
@@ -33,14 +37,25 @@ python -m pip install -e ".[dev]"
 mini-harness eval evals/cases
 ```
 
-运行真实 Anthropic 模型：
+运行真实 OpenAI 模型：
 
 ```bash
-export ANTHROPIC_API_KEY="..."
+export OPENAI_API_KEY="..."
 mini-harness run \
   --workspace ./example-workspace \
   "检查测试，修复缺陷，并运行相关测试。"
 ```
+
+使用 OpenAI-compatible 网关时，通过环境变量传入完整 API Root，不要把 Key 写入仓库：
+
+```bash
+export OPENAI_BASE_URL="https://your-gateway.example/v1"
+mini-harness run --workspace ./example-workspace "修复失败测试。"
+```
+
+默认 `--tool-mode auto` 优先使用 Responses 原生 Function Tools。兼容网关明确拒绝原生
+工具时，可以回退到 JSON Prompt 协议；`function` 可强制原生模式，`prompt` 可显式选择
+兼容模式。报告会记录 Backend，不把 Prompt 模式描述成原生 Function Calling。
 
 文件写入和普通 Shell 命令默认需要询问。`--auto-approve` 只应在你完全控制的
 Workspace 中使用。
@@ -74,12 +89,15 @@ Tool Call 都有且只有一个 Tool Result。
 mini-harness run TASK [--workspace PATH] [--config FILE] [--trace FILE]
 mini-harness replay TRACE [--workspace PATH] [--output-trace FILE]
 mini-harness eval [CASES_DIR] [--json]
+mini-harness live-eval [CASES_DIR] [--runs 3] [--validate-only]
 mini-harness trace TRACE
 ```
 
-- `run` 通过 Anthropic SDK 请求真实模型。
+- `run` 默认使用 OpenAI Responses API，也可通过 `--provider anthropic` 使用 Anthropic。
 - `replay` 复用历史模型响应，但重新执行当前 Policy 和 Tool。
 - `eval` 将每个 Fixture 复制到独立临时 Workspace 后执行确定性断言。
+- `live-eval` 重复运行五个真实模型任务，增量保存 JSON、Markdown、Token、耗时、
+  失败分类和脱敏 Trace。
 - `trace` 汇总事件数量和终止状态。
 
 ## Replay 的能力边界
@@ -99,13 +117,46 @@ Eval Case 通过干净 Fixture 提供确定起点。
 所有判断都来自文件状态、命令退出码、工具轨迹、权限决策和运行状态，不使用
 LLM-as-a-Judge。真实验证结果只会在当前 Revision 完整执行后记录：
 
+### Live Eval
+
+不提供 Key、也不发送网络请求时，可以先验证全部五个 Case：
+
+```bash
+mini-harness live-eval evals/live_cases --validate-only
+```
+
+凭据可用后执行预定的 5 个 Case x 3 次：
+
+```bash
+export OPENAI_API_KEY="..."
+mini-harness live-eval evals/live_cases --runs 3
+```
+
+每次从干净 Fixture 开始，以文件断言和 `unittest` 退出码验收。`gpt-5.6-sol`、
+`gpt-5.6-terra`、`gpt-5.6-luna` 的成本估算使用
+[OpenAI Standard API 官方价格](https://developers.openai.com/api/docs/pricing)，结果中
+会保存价格来源；兼容网关实际账单可能不同。
+
+当前 Revision 不公布 15 次模型成功率：验证过程中，所提供兼容端点开始对所有生成请求
+返回 HTTP 403。Runner、五个 Case、Usage、官方价估算和 Provider Error 证据均已实现，
+但不会伪造成功结果。
+
+### 可检查证据
+
+以下是由 [`scripts/generate_demo_artifacts.py`](scripts/generate_demo_artifacts.py)
+生成的确定性 Harness 示例，不是真实模型 Benchmark：
+
+- [成功编辑并测试的 Trace](examples/traces/successful-edit.jsonl)
+- [危险命令拒绝 Trace](examples/traces/dangerous-command-denied.jsonl)
+- [Replay 首次分歧](examples/replay/first-divergence.json)
+
 <!-- VERIFIED_RESULTS_START -->
 
 已于 2026-07-26 在 macOS arm64、Python 3.12.13 环境验证：
 
 - Ruff Lint 与格式检查通过。
-- MyPy 严格类型检查通过，共检查 36 个源码/测试文件。
-- pytest：41 passed。
+- MyPy 严格类型检查通过，共检查 41 个源码/测试文件。
+- pytest：48 passed。
 - 确定性 Eval：10/10 Case 通过。
 - task pass rate：100.0%。
 - average turns：2.20。
@@ -141,7 +192,8 @@ Policy Engine 是风险分类器，不是操作系统沙箱。路径解析和字
 - [`SWE-agent/SWE-ReX`](https://github.com/SWE-agent/SWE-ReX)：仅作为后续
   Sandbox Adapter 候选，当前未集成。
 
-直接运行时依赖包括 Anthropic Python SDK、Pydantic、Typer 和 PyYAML；测试与质量
+直接运行时依赖包括 OpenAI Python SDK、Anthropic Python SDK、Pydantic、Typer 和
+PyYAML；测试与质量
 检查使用 pytest、pytest-asyncio、Ruff 和 MyPy。版本约束见
 [`pyproject.toml`](pyproject.toml)，各依赖仍遵循其各自许可证。
 

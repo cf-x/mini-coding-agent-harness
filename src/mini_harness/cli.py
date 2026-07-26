@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Annotated
@@ -11,9 +13,13 @@ from typing import Annotated
 import typer
 
 from mini_harness.config import HarnessConfig, load_config
+from mini_harness.evals.live_report import format_live_text_report
+from mini_harness.evals.live_runner import LiveEvalRunner, LivePricing
 from mini_harness.evals.report import format_json_report, format_text_report
 from mini_harness.evals.runner import EvalRunner
 from mini_harness.models.anthropic import AnthropicModelClient
+from mini_harness.models.base import ModelClient
+from mini_harness.models.openai import OpenAIModelClient
 from mini_harness.models.replay import ReplayModelClient
 from mini_harness.policy.approval import AlwaysApprove, InteractiveApproval
 from mini_harness.policy.engine import PolicyEngine
@@ -45,14 +51,35 @@ def run_command(
     auto_approve: Annotated[
         bool, typer.Option("--auto-approve", help="Approve policy ASK decisions.")
     ] = False,
+    provider: Annotated[
+        str | None,
+        typer.Option("--provider", help="Model provider: openai or anthropic."),
+    ] = None,
+    model_name: Annotated[
+        str | None,
+        typer.Option("--model", help="Provider model ID."),
+    ] = None,
+    base_url: Annotated[
+        str | None,
+        typer.Option("--base-url", help="OpenAI-compatible API root, normally ending in /v1."),
+    ] = None,
+    tool_mode: Annotated[
+        str | None,
+        typer.Option("--tool-mode", help="OpenAI tool transport: auto, function, or prompt."),
+    ] = None,
 ) -> None:
-    """Run a task against the Anthropic API."""
+    """Run a task against a live model API."""
 
-    config = load_config(config_path, workspace=workspace)
-    model = AnthropicModelClient(
-        model=config.model,
-        max_tokens=config.max_model_tokens,
+    config = load_config(
+        config_path,
+        workspace=workspace,
+        provider=provider,
+        model=model_name,
+        openai_base_url=base_url,
+        openai_tool_mode=tool_mode,
     )
+    _require_api_key(config.provider)
+    model = _create_model_client(config)
     result = asyncio.run(
         _run_runtime(
             task,
@@ -119,6 +146,114 @@ def eval_command(
         raise typer.Exit(1)
 
 
+@app.command("live-eval")
+def live_eval_command(
+    cases_dir: Annotated[
+        Path,
+        typer.Argument(help="Directory containing live */case.yaml."),
+    ] = Path("evals/live_cases"),
+    output_dir: Annotated[
+        Path,
+        typer.Option("--output", help="Directory for incremental results and traces."),
+    ] = Path("eval-results/live"),
+    runs: Annotated[
+        int,
+        typer.Option("--runs", min=1, help="Attempts per case."),
+    ] = 3,
+    config_path: Annotated[
+        Path | None, typer.Option("--config", help="Optional TOML configuration.")
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option("--provider", help="Model provider: openai or anthropic."),
+    ] = None,
+    model_name: Annotated[
+        str | None,
+        typer.Option("--model", help="Provider model ID."),
+    ] = None,
+    base_url: Annotated[
+        str | None,
+        typer.Option("--base-url", help="OpenAI-compatible API root, normally ending in /v1."),
+    ] = None,
+    tool_mode: Annotated[
+        str | None,
+        typer.Option("--tool-mode", help="OpenAI tool transport: auto, function, or prompt."),
+    ] = None,
+    validate_only: Annotated[
+        bool,
+        typer.Option("--validate-only", help="Validate cases without API requests."),
+    ] = False,
+    input_price: Annotated[
+        float | None,
+        typer.Option("--input-price", min=0, help="USD per 1M uncached input tokens."),
+    ] = None,
+    output_price: Annotated[
+        float | None,
+        typer.Option("--output-price", min=0, help="USD per 1M output tokens."),
+    ] = None,
+    cache_creation_price: Annotated[
+        float | None,
+        typer.Option("--cache-creation-price", min=0, help="USD per 1M cache-write tokens."),
+    ] = None,
+    cache_read_price: Annotated[
+        float | None,
+        typer.Option("--cache-read-price", min=0, help="USD per 1M cached input tokens."),
+    ] = None,
+) -> None:
+    """Run deterministic coding tasks against a real model."""
+
+    config = load_config(
+        config_path,
+        provider=provider,
+        model=model_name,
+        openai_base_url=base_url,
+        openai_tool_mode=tool_mode,
+    )
+    pricing = None
+    if any(
+        value is not None
+        for value in (
+            input_price,
+            output_price,
+            cache_creation_price,
+            cache_read_price,
+        )
+    ):
+        pricing = LivePricing(
+            source="CLI override",
+            basis="User-provided USD rates per 1M tokens",
+            input_per_million=input_price,
+            output_per_million=output_price,
+            cache_creation_per_million=cache_creation_price,
+            cache_read_per_million=cache_read_price,
+        )
+    runner = LiveEvalRunner(
+        cases_dir=cases_dir,
+        output_dir=output_dir,
+        model_factory=lambda: _create_model_client(config),
+        model_name=config.model,
+        model_backend=(
+            f"openai-responses-{config.openai_tool_mode}"
+            if config.provider == "openai"
+            else "anthropic-messages"
+        ),
+        runs_per_case=runs,
+        pricing=pricing,
+        git_commit=_git_commit(),
+    )
+    if validate_only:
+        cases = runner.validate()
+        typer.echo(f"validated {len(cases)} live eval cases; no model requests sent")
+        return
+
+    _require_api_key(config.provider)
+    suite = asyncio.run(runner.run_all())
+    typer.echo(format_live_text_report(suite))
+    typer.echo(f"results: {(output_dir / 'results.json').resolve()}")
+    if not all(attempt.passed for attempt in suite.attempts):
+        raise typer.Exit(1)
+
+
 @app.command("trace")
 def trace_command(
     trace: Annotated[Path, typer.Argument(help="JSONL trace to summarize.")],
@@ -146,7 +281,7 @@ def trace_command(
 async def _run_runtime(
     task: str,
     config: HarnessConfig,
-    model: AnthropicModelClient | ReplayModelClient,
+    model: ModelClient,
     *,
     trace_path: Path | None,
     auto_approve: bool,
@@ -174,6 +309,39 @@ async def _run_runtime(
         recorder=recorder,
     )
     return await runtime.run(task)
+
+
+def _create_model_client(config: HarnessConfig) -> ModelClient:
+    if config.provider == "openai":
+        return OpenAIModelClient(
+            model=config.model,
+            max_output_tokens=config.max_model_tokens,
+            base_url=config.openai_base_url,
+            tool_mode=config.openai_tool_mode,
+        )
+    return AnthropicModelClient(
+        model=config.model,
+        max_tokens=config.max_model_tokens,
+    )
+
+
+def _require_api_key(provider: str) -> None:
+    environment_name = "OPENAI_API_KEY" if provider == "openai" else "ANTHROPIC_API_KEY"
+    if not os.getenv(environment_name):
+        raise typer.BadParameter(
+            f"{environment_name} is required for provider {provider}; "
+            "use --validate-only to check live cases without a credential"
+        )
+
+
+def _git_commit() -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else "unknown"
 
 
 def _print_run_result(result: RunResult) -> None:

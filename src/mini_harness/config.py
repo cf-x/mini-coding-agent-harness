@@ -21,8 +21,11 @@ class HarnessConfig(BaseModel):
     write_policy: Literal["allow", "ask", "deny"] = "ask"
     shell_policy: Literal["allow", "ask", "deny"] = "ask"
     trace_dir: Path = Path("traces")
-    model: str = "claude-sonnet-4-20250514"
+    provider: Literal["openai", "anthropic"] = "openai"
+    model: str = "gpt-5.6-terra"
     max_model_tokens: int = Field(default=4096, ge=1)
+    openai_base_url: str | None = None
+    openai_tool_mode: Literal["auto", "function", "prompt"] = "auto"
     sensitive_paths: list[str] = Field(
         default_factory=lambda: [".env", "*.pem", "*.key", "*credentials*"]
     )
@@ -49,7 +52,10 @@ _ENV_MAPPING: dict[str, tuple[str, Callable[[str], object]]] = {
     "MINI_HARNESS_MAX_OUTPUT_CHARS": ("max_output_chars", int),
     "MINI_HARNESS_WRITE_POLICY": ("write_policy", str),
     "MINI_HARNESS_SHELL_POLICY": ("shell_policy", str),
+    "MINI_HARNESS_PROVIDER": ("provider", str),
     "MINI_HARNESS_MODEL": ("model", str),
+    "MINI_HARNESS_OPENAI_TOOL_MODE": ("openai_tool_mode", str),
+    "OPENAI_BASE_URL": ("openai_base_url", str),
 }
 
 

@@ -61,6 +61,17 @@ def test_relative_trace_directory_is_workspace_relative(tmp_path: Path) -> None:
     assert config.resolved_trace_dir() == (tmp_path / "trace-output").resolve()
 
 
+def test_openai_environment_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://gateway.example/v1")
+    monkeypatch.setenv("MINI_HARNESS_OPENAI_TOOL_MODE", "prompt")
+
+    config = load_config()
+
+    assert config.provider == "openai"
+    assert config.openai_base_url == "https://gateway.example/v1"
+    assert config.openai_tool_mode == "prompt"
+
+
 def test_anthropic_adapter_groups_parallel_tool_results() -> None:
     messages = [
         Message(role="user", content="read both"),

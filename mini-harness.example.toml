@@ -6,6 +6,10 @@ max_output_chars = 20000
 write_policy = "ask"
 shell_policy = "ask"
 trace_dir = "traces"
-model = "claude-sonnet-4-20250514"
+provider = "openai"
+model = "gpt-5.6-terra"
 max_model_tokens = 4096
+openai_tool_mode = "auto"
+# Use the full OpenAI-compatible API root, normally ending in /v1.
+# openai_base_url = "https://api.openai.com/v1"
 sensitive_paths = [".env", "*.pem", "*.key", "*credentials*"]

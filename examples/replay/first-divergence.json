@@ -1,0 +1,12 @@
+{
+  "turn": 1,
+  "expected_tool": "read_file",
+  "actual_tool": "read_file",
+  "expected_arguments": {
+    "path": "a.txt"
+  },
+  "actual_arguments": {
+    "path": "b.txt"
+  },
+  "reason": "normalized tool arguments differ"
+}

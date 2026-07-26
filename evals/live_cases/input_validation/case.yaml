@@ -1,0 +1,14 @@
+name: input_validation
+description: Adds input validation based on failing boundary tests.
+task: Update parse_age() in validators.py to satisfy the existing tests, including invalid input. Run the relevant tests.
+tags: [python, validation, tests]
+expected:
+  file_contains:
+    - path: validators.py
+      text: "raise ValueError"
+  command_exit_code:
+    - command: python3 -m unittest -q
+      value: 0
+  tool_called: [read_file, edit_file, bash]
+  max_tool_calls: 12
+  run_status_equals: completed

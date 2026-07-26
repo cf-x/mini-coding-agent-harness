@@ -8,5 +8,5 @@ __pycache__/
 *.py[cod]
 build/
 dist/
-traces/
-eval-results/
+/traces/
+/eval-results/

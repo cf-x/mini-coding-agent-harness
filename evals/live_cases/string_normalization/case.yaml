@@ -1,0 +1,11 @@
+name: string_normalization
+description: Implements a specified normalization rule and verifies it.
+task: Fix normalize_name() in names.py so it trims outer whitespace, collapses internal whitespace, and returns lowercase text. Run the relevant tests.
+tags: [python, strings, tests]
+expected:
+  command_exit_code:
+    - command: python3 -m unittest -q
+      value: 0
+  tool_called: [read_file, edit_file, bash]
+  max_tool_calls: 10
+  run_status_equals: completed

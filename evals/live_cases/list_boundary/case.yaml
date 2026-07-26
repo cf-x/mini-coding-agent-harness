@@ -1,0 +1,11 @@
+name: list_boundary
+description: Repairs an off-by-one error while preserving empty-list behavior.
+task: Fix last_item() in collections_utils.py according to the tests. Run the relevant tests.
+tags: [python, boundary, tests]
+expected:
+  command_exit_code:
+    - command: python3 -m unittest -q
+      value: 0
+  tool_called: [read_file, edit_file, bash]
+  max_tool_calls: 10
+  run_status_equals: completed

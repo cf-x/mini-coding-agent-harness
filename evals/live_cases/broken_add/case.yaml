@@ -1,0 +1,14 @@
+name: broken_add
+description: Fixes a small arithmetic regression and runs its tests.
+task: Fix add() in calculator.py so the existing tests pass. Run the relevant tests before finishing.
+tags: [python, bugfix, tests]
+expected:
+  file_contains:
+    - path: calculator.py
+      text: "return left + right"
+  command_exit_code:
+    - command: python3 -m unittest -q
+      value: 0
+  tool_called: [read_file, edit_file, bash]
+  max_tool_calls: 10
+  run_status_equals: completed

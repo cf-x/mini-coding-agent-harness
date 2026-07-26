@@ -14,20 +14,8 @@ from mini_harness.config import HarnessConfig
 from mini_harness.evals.case import EvalCase
 from mini_harness.evals.evaluators import (
     AssertionResult,
-    CommandExitCode,
-    DivergenceTurnEquals,
     EvalContext,
-    Evaluator,
-    FileContains,
-    FileExists,
-    MaxToolCalls,
-    PolicyDecisionEquals,
-    ReplayMatches,
-    RunStatusEquals,
-    ToolCalled,
-    ToolNotCalled,
-    ToolOutputTruncated,
-    ToolStatusEquals,
+    build_evaluators,
 )
 from mini_harness.messages import ToolResultStatus
 from mini_harness.models.replay import ReplayModelClient
@@ -167,7 +155,9 @@ class EvalRunner:
                 events=events,
                 replay_divergence=divergence,
             )
-            assertions = [await evaluator.evaluate(context) for evaluator in self._evaluators(case)]
+            assertions = [
+                await evaluator.evaluate(context) for evaluator in build_evaluators(case.expected)
+            ]
             tool_errors = sum(
                 result.status in {ToolResultStatus.ERROR, ToolResultStatus.TIMEOUT}
                 for result in run.tool_results
@@ -236,30 +226,6 @@ class EvalRunner:
         )
         run = await runtime.run(case.task)
         return run, TraceReader(trace_path).read()
-
-    @staticmethod
-    def _evaluators(case: EvalCase) -> list[Evaluator]:
-        expected = case.expected
-        evaluators: list[Evaluator] = []
-        evaluators.extend(FileExists(path) for path in expected.file_exists)
-        evaluators.extend(FileContains(item) for item in expected.file_contains)
-        evaluators.extend(CommandExitCode(item) for item in expected.command_exit_code)
-        evaluators.extend(ToolCalled(name) for name in expected.tool_called)
-        evaluators.extend(ToolNotCalled(name) for name in expected.tool_not_called)
-        evaluators.extend(PolicyDecisionEquals(item) for item in expected.policy_decision_equals)
-        if expected.max_tool_calls is not None:
-            evaluators.append(MaxToolCalls(expected.max_tool_calls))
-        if expected.run_status_equals is not None:
-            evaluators.append(RunStatusEquals(expected.run_status_equals))
-        evaluators.extend(ToolOutputTruncated(name) for name in expected.truncated_tools)
-        evaluators.extend(
-            ToolStatusEquals(name, status) for name, status in expected.tool_status_equals.items()
-        )
-        if expected.replay is not None:
-            evaluators.append(ReplayMatches(expected.replay.matches))
-            if expected.replay.divergence_turn is not None:
-                evaluators.append(DivergenceTurnEquals(expected.replay.divergence_turn))
-        return evaluators
 
 
 def _average(values: list[int]) -> float:

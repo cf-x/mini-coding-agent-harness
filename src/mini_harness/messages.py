@@ -1,5 +1,7 @@
 """Shared message, tool-call, and result models."""
 
+from __future__ import annotations
+
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -33,6 +35,31 @@ class ToolResult(BaseModel):
     exit_code: int | None = None
 
 
+class ModelUsage(BaseModel):
+    """Provider-neutral token usage for one or more model requests.
+
+    ``input_tokens`` includes cached input. Cache fields are subsets used for
+    cost estimation, so ``total_tokens`` does not add them a second time.
+    """
+
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    cache_creation_input_tokens: int = Field(default=0, ge=0)
+    cache_read_input_tokens: int = Field(default=0, ge=0)
+    request_count: int = Field(default=0, ge=0)
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+    def add(self, other: ModelUsage) -> None:
+        self.input_tokens += other.input_tokens
+        self.output_tokens += other.output_tokens
+        self.cache_creation_input_tokens += other.cache_creation_input_tokens
+        self.cache_read_input_tokens += other.cache_read_input_tokens
+        self.request_count += other.request_count
+
+
 class Message(BaseModel):
     """Provider-neutral conversation message."""
 
@@ -44,7 +71,7 @@ class Message(BaseModel):
     tool_status: ToolResultStatus | None = None
 
     @classmethod
-    def from_tool_result(cls, result: ToolResult) -> "Message":
+    def from_tool_result(cls, result: ToolResult) -> Message:
         return cls(
             role="tool",
             content=result.output,
@@ -60,9 +87,10 @@ class ModelResponse(BaseModel):
     content: str = ""
     tool_calls: list[ToolCall] = Field(default_factory=list)
     stop_reason: str | None = None
+    usage: ModelUsage | None = None
 
     @model_validator(mode="after")
-    def require_content_or_tool(self) -> "ModelResponse":
+    def require_content_or_tool(self) -> ModelResponse:
         if not self.content and not self.tool_calls:
             raise ValueError("a model response must contain text or at least one tool call")
         return self
