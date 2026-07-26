@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import platform
 import shutil
 import tempfile
 import uuid
@@ -9,13 +10,21 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from mini_harness.config import HarnessConfig
-from mini_harness.evals.evaluators import AssertionResult, EvalContext, build_evaluators
+from mini_harness.evals.evaluators import (
+    ARTIFACT_EVALUATORS,
+    RUNTIME_EVALUATORS,
+    TOOL_CONTRACT_EVALUATORS,
+    AssertionResult,
+    EvalContext,
+    build_evaluators,
+)
 from mini_harness.evals.live_case import LiveEvalCase
+from mini_harness.executors import CommandExecutor, LocalCommandExecutor
 from mini_harness.messages import ModelUsage, ToolResultStatus
 from mini_harness.models.base import ModelClient
 from mini_harness.policy.approval import AlwaysApprove
@@ -33,6 +42,7 @@ class FailureCategory(StrEnum):
     NONE = "none"
     MODEL_PLANNING_ERROR = "model_planning_error"
     WRONG_TOOL_ARGUMENTS = "wrong_tool_arguments"
+    TOOL_CONTRACT_ERROR = "tool_contract_error"
     POLICY_DENIED = "policy_denied"
     TOOL_ERROR = "tool_error"
     TEST_FAILURE = "test_failure"
@@ -97,6 +107,9 @@ class LiveAttemptResult(BaseModel):
     case_name: str
     attempt: int = Field(ge=1)
     passed: bool
+    artifact_passed: bool
+    runtime_passed: bool
+    tool_contract_passed: bool
     failure_category: FailureCategory
     run_id: str
     status: str
@@ -118,6 +131,7 @@ class LiveSuiteResult(BaseModel):
     git_commit: str
     runs_per_case: int = Field(ge=1)
     pricing: LivePricing
+    python_version: str = Field(default_factory=platform.python_version)
     started_at: datetime
     completed_at: datetime
     attempts: list[LiveAttemptResult] = Field(default_factory=list)
@@ -131,12 +145,44 @@ class LiveSuiteResult(BaseModel):
         return self.passed_attempts / len(self.attempts) if self.attempts else 0.0
 
     @property
+    def artifact_passed_attempts(self) -> int:
+        return sum(attempt.artifact_passed for attempt in self.attempts)
+
+    @property
+    def artifact_pass_rate(self) -> float:
+        return self.artifact_passed_attempts / len(self.attempts) if self.attempts else 0.0
+
+    @property
+    def runtime_passed_attempts(self) -> int:
+        return sum(attempt.runtime_passed for attempt in self.attempts)
+
+    @property
+    def runtime_pass_rate(self) -> float:
+        return self.runtime_passed_attempts / len(self.attempts) if self.attempts else 0.0
+
+    @property
+    def tool_contract_passed_attempts(self) -> int:
+        return sum(attempt.tool_contract_passed for attempt in self.attempts)
+
+    @property
+    def tool_contract_pass_rate(self) -> float:
+        return self.tool_contract_passed_attempts / len(self.attempts) if self.attempts else 0.0
+
+    @property
     def pass_at_k(self) -> float:
-        case_names = {attempt.case_name for attempt in self.attempts}
-        if not case_names:
-            return 0.0
-        passed_cases = {attempt.case_name for attempt in self.attempts if attempt.passed}
-        return len(passed_cases) / len(case_names)
+        return self._pass_at_k("passed")
+
+    @property
+    def artifact_pass_at_k(self) -> float:
+        return self._pass_at_k("artifact_passed")
+
+    @property
+    def runtime_pass_at_k(self) -> float:
+        return self._pass_at_k("runtime_passed")
+
+    @property
+    def tool_contract_pass_at_k(self) -> float:
+        return self._pass_at_k("tool_contract_passed")
 
     @property
     def total_usage(self) -> ModelUsage:
@@ -171,6 +217,15 @@ class LiveSuiteResult(BaseModel):
             "passed_attempts": self.passed_attempts,
             "task_pass_rate": self.task_pass_rate,
             "pass_at_k": self.pass_at_k,
+            "artifact_passed_attempts": self.artifact_passed_attempts,
+            "artifact_pass_rate": self.artifact_pass_rate,
+            "artifact_pass_at_k": self.artifact_pass_at_k,
+            "runtime_passed_attempts": self.runtime_passed_attempts,
+            "runtime_pass_rate": self.runtime_pass_rate,
+            "runtime_pass_at_k": self.runtime_pass_at_k,
+            "tool_contract_passed_attempts": self.tool_contract_passed_attempts,
+            "tool_contract_pass_rate": self.tool_contract_pass_rate,
+            "tool_contract_pass_at_k": self.tool_contract_pass_at_k,
             "average_turns": self.average_turns,
             "average_tool_calls": self.average_tool_calls,
             "average_duration_ms": self.average_duration_ms,
@@ -180,6 +235,23 @@ class LiveSuiteResult(BaseModel):
             "cache_read_input_tokens": usage.cache_read_input_tokens,
             "total_estimated_cost_usd": self.total_estimated_cost_usd,
         }
+
+    def _pass_at_k(
+        self,
+        field: Literal[
+            "passed",
+            "artifact_passed",
+            "runtime_passed",
+            "tool_contract_passed",
+        ],
+    ) -> float:
+        case_names = {attempt.case_name for attempt in self.attempts}
+        if not case_names:
+            return 0.0
+        passed_cases = {
+            attempt.case_name for attempt in self.attempts if bool(getattr(attempt, field))
+        }
+        return len(passed_cases) / len(case_names)
 
 
 class LiveEvalRunner:
@@ -196,6 +268,7 @@ class LiveEvalRunner:
         runs_per_case: int = 3,
         pricing: LivePricing | None = None,
         git_commit: str = "unknown",
+        command_executor: CommandExecutor | None = None,
     ) -> None:
         if runs_per_case < 1:
             raise ValueError("runs_per_case must be at least 1")
@@ -207,6 +280,7 @@ class LiveEvalRunner:
         self.runs_per_case = runs_per_case
         self.pricing = pricing or official_openai_pricing(model_name) or LivePricing()
         self.git_commit = git_commit
+        self.command_executor = command_executor or LocalCommandExecutor()
 
     def discover(self) -> list[tuple[Path, LiveEvalCase]]:
         discovered: list[tuple[Path, LiveEvalCase]] = []
@@ -260,6 +334,7 @@ class LiveEvalRunner:
             config = HarnessConfig(
                 workspace=workspace,
                 max_turns=case.max_turns,
+                finalization_turn=case.finalization_turn,
                 tool_timeout_seconds=case.tool_timeout_seconds,
                 max_output_chars=case.max_output_chars,
                 write_policy=case.write_policy,
@@ -269,7 +344,7 @@ class LiveEvalRunner:
             run_id = f"live_{case.name}_{attempt}_{uuid.uuid4().hex}"
             runtime = AgentRuntime(
                 model=self.model_factory(),
-                tools=default_registry(),
+                tools=default_registry(self.command_executor),
                 policy=PolicyEngine(
                     workspace,
                     write_policy=case.write_policy,
@@ -290,6 +365,12 @@ class LiveEvalRunner:
                 await evaluator.evaluate(context) for evaluator in build_evaluators(case.expected)
             ]
             passed = all(assertion.passed for assertion in assertions)
+            artifact_passed = _assertion_group_passed(assertions, ARTIFACT_EVALUATORS)
+            runtime_passed = _assertion_group_passed(assertions, RUNTIME_EVALUATORS)
+            tool_contract_passed = _assertion_group_passed(
+                assertions,
+                TOOL_CONTRACT_EVALUATORS,
+            )
             usage = _usage_from_events(events)
             tool_errors = sum(
                 result.status in {ToolResultStatus.ERROR, ToolResultStatus.TIMEOUT}
@@ -304,10 +385,14 @@ class LiveEvalRunner:
                 case_name=case.name,
                 attempt=attempt,
                 passed=passed,
+                artifact_passed=artifact_passed,
+                runtime_passed=runtime_passed,
+                tool_contract_passed=tool_contract_passed,
                 failure_category=_classify_failure(
                     run,
                     assertions,
                     policy_denials=policy_denials,
+                    expected_tool_statuses=case.expected.tool_status_equals,
                 ),
                 run_id=run.run_id,
                 status=run.status.value,
@@ -351,6 +436,7 @@ def _classify_failure(
     assertions: list[AssertionResult],
     *,
     policy_denials: int,
+    expected_tool_statuses: dict[str, Literal["success", "error", "denied", "timeout"]],
 ) -> FailureCategory:
     if all(assertion.passed for assertion in assertions):
         return FailureCategory.NONE
@@ -366,7 +452,19 @@ def _classify_failure(
     ):
         return FailureCategory.WRONG_TOOL_ARGUMENTS
     if any(
+        not assertion.passed
+        and assertion.evaluator in {"ToolCalled", "ToolCalledAny", "ToolNotCalled"}
+        for assertion in assertions
+    ):
+        return FailureCategory.TOOL_CONTRACT_ERROR
+    if any(
+        not assertion.passed and assertion.evaluator == "ToolStatusEquals"
+        for assertion in assertions
+    ):
+        return FailureCategory.TOOL_ERROR
+    if any(
         result.status in {ToolResultStatus.ERROR, ToolResultStatus.TIMEOUT}
+        and expected_tool_statuses.get(result.tool_name) != result.status.value
         for result in run.tool_results
     ):
         return FailureCategory.TOOL_ERROR
@@ -381,3 +479,13 @@ def _classify_failure(
 
 def _average(values: list[int]) -> float:
     return sum(values) / len(values) if values else 0.0
+
+
+def _assertion_group_passed(
+    assertions: list[AssertionResult],
+    evaluator_names: frozenset[str],
+) -> bool:
+    selected = [
+        assertion.passed for assertion in assertions if assertion.evaluator in evaluator_names
+    ]
+    return all(selected)

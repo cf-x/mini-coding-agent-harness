@@ -2,8 +2,6 @@
 
 [English](README.md)
 
-[![CI](https://github.com/cf-x/mini-coding-agent-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/cf-x/mini-coding-agent-harness/actions/workflows/ci.yml)
-
 这是一个小型、可测试、可追踪的 Coding Agent Harness。项目不追求工具数量，而是
 把模型决策、权限判断、工具执行、运行轨迹和回归评测拆成清晰模块，回答一个具体问题：
 
@@ -18,6 +16,7 @@
 
 - 异步 Agent Loop 和最大轮数控制。
 - `read_file`、`write_file`、`edit_file`、`bash` 四个工具。
+- 可注入的 Local 和 Docker Bash Command Executor。
 - Pydantic 参数校验与统一 `ToolResult`。
 - Workspace 路径和符号链接越界检查。
 - 工具执行前的 `allow / ask / deny` 权限决策。
@@ -45,25 +44,39 @@ mini-harness eval evals/cases
 运行真实 OpenAI 模型：
 
 ```bash
-export OPENAI_API_KEY="..."
-mini-harness run \
+./scripts/macos-keychain-openai setup  # 仅首次或轮换凭据时执行
+./scripts/macos-keychain-openai run run \
   --workspace ./example-workspace \
   "检查测试，修复缺陷，并运行相关测试。"
 ```
 
-使用 OpenAI-compatible 网关时，通过环境变量传入完整 API Root，不要把 Key 写入仓库：
-
-```bash
-export OPENAI_BASE_URL="https://your-gateway.example/v1"
-mini-harness run --workspace ./example-workspace "修复失败测试。"
-```
+macOS 包装脚本把 OpenAI 风格的 `sk-` Key 和可选 Base URL 保存在登录钥匙串中，后续只
+向仓库的 `.venv/bin/mini-harness` 进程注入。Linux、CI 或临时运行仍可使用
+`OPENAI_API_KEY` 和可选的 `OPENAI_BASE_URL` 环境变量。不要把真实值写入仓库。
 
 默认 `--tool-mode auto` 优先使用 Responses 原生 Function Tools。兼容网关明确拒绝原生
 工具时，可以回退到 JSON Prompt 协议；`function` 可强制原生模式，`prompt` 可显式选择
 兼容模式。报告会记录 Backend，不把 Prompt 模式描述成原生 Function Calling。
 
+部分网关会把 OpenAI 订阅账号限制为 Codex Responses 客户端契约。此时需要显式使用
+`--client-profile codex`；默认的 `standard` 仍保留普通 OpenAI SDK 请求头。该设置不包含
+凭据，也不改变 `OPENAI_API_KEY` 的读取方式。Codex 档案使用无状态 HTTP 续接，因为部分
+兼容网关只在 Responses WebSocket v2 中支持 `previous_response_id`。
+
 文件写入和普通 Shell 命令默认需要询问。`--auto-approve` 只应在你完全控制的
 Workspace 中使用。
+
+`bash` 默认仍在本机执行。若只想让 Bash 在短生命周期 Docker 容器中执行，请先在本机
+准备镜像，再显式选择 Docker Executor：
+
+```bash
+docker pull python:3.12-slim
+mini-harness run --executor docker --docker-image python:3.12-slim \
+  --workspace ./example-workspace "检查测试并修复缺陷。"
+```
+
+Harness 不会自动拉取镜像。CPU、内存和 PID 上限可通过 `--docker-cpus`、
+`--docker-memory-mb`、`--docker-pids-limit` 或 TOML 设置。
 
 ## 架构与执行链路
 
@@ -91,10 +104,10 @@ Tool Call 都有且只有一个 Tool Result。
 ## CLI
 
 ```text
-mini-harness run TASK [--workspace PATH] [--config FILE] [--trace FILE]
+mini-harness run TASK [--workspace PATH] [--executor local|docker] [--config FILE]
 mini-harness replay TRACE [--workspace PATH] [--output-trace FILE]
 mini-harness eval [CASES_DIR] [--json]
-mini-harness live-eval [CASES_DIR] [--runs 3] [--validate-only]
+mini-harness live-eval [CASES_DIR] [--executor local|docker] [--validate-only]
 mini-harness trace TRACE
 ```
 
@@ -133,8 +146,7 @@ mini-harness live-eval evals/live_cases --validate-only
 凭据可用后执行预定的 5 个 Case x 3 次：
 
 ```bash
-export OPENAI_API_KEY="..."
-mini-harness live-eval evals/live_cases --runs 3
+./scripts/macos-keychain-openai run live-eval evals/live_cases --runs 3
 ```
 
 每次从干净 Fixture 开始，以文件断言和 `unittest` 退出码验收。`gpt-5.6-sol`、
@@ -142,9 +154,17 @@ mini-harness live-eval evals/live_cases --runs 3
 [OpenAI Standard API 官方价格](https://developers.openai.com/api/docs/pricing)，结果中
 会保存价格来源；兼容网关实际账单可能不同。
 
-当前 Revision 不公布 15 次模型成功率：验证过程中，所提供兼容端点开始对所有生成请求
-返回 HTTP 403。Runner、五个 Case、Usage、官方价估算和 Provider Error 证据均已实现，
-但不会伪造成功结果。
+已于 2026-07-26 完成两组版本化的 `gpt-5.6-terra` 15 次真实运行。v1 保留原始
+7/15（46.7%）严格结果，并暴露了过度限定编辑工具和 Python 环境漂移。v2 固定 Harness
+解释器、增加分层指标和有界收尾轮，并允许两种受支持的文件修改工具：严格通过
+13/15（86.7%），Pass@3 100%，Runtime 完成 15/15，产物正确 15/15。剩余两次失败都是
+未调用专用 `read_file` 的工具契约偏差。由于 Rubric 已版本化调整，不能把严格分数变化
+完全归因于模型能力。详见 [v1 脱敏分析](docs/live-eval-2026-07-26.md) 和
+[v1/v2 脱敏对比](docs/live-eval-v1-v2-comparison.md)。
+
+以后复跑时，Python 版本、macOS Keychain、临时环境变量兜底、兼容网关参数、冒烟、
+5×3 正式运行和脱敏检查统一按
+[本地 Live Eval 复跑手册](docs/live-eval-runbook.zh-CN.md)执行。
 
 ### 可检查证据
 
@@ -160,46 +180,56 @@ mini-harness live-eval evals/live_cases --runs 3
 已于 2026-07-26 在 macOS arm64、Python 3.12.13 环境验证：
 
 - Ruff Lint 与格式检查通过。
-- MyPy 严格类型检查通过，共检查 41 个源码/测试文件。
-- pytest：48 passed。
+- MyPy 严格类型检查通过，共检查 44 个源码/测试文件。
+- pytest：71 passed，包含 Workspace 隔离、最小环境、非 Root、默认禁网和超时清理的
+  真实 Docker 集成测试。
 - 确定性 Eval：10/10 Case 通过。
-- task pass rate：100.0%。
-- average turns：2.20。
-- average tool calls：1.30。
-- tool error rate：23.1%。
-- policy denials：2。
-- replay match rate：50.0%。
-- 单次本机样本 average run duration：26.40 ms。
-
-`tool_error_rate` 包含故意制造的错误、超时和未知工具结果；`replay_match_rate`
-包含一个预期发生分歧的 Case，因此原始 Match Rate 为 50% 与所有 Replay 断言通过并不
-矛盾。耗时受环境影响，不作为性能结论。
 
 <!-- VERIFIED_RESULTS_END -->
 
 ## 安全说明
 
-Policy Engine 是风险分类器，不是操作系统沙箱。路径解析和字符串规则无法隔离 Shell
-展开、解释器、子进程、挂载点、网络或未知二进制文件。不要在敏感主机上运行不可信任务。
-生产版本应把工具放入容器、虚拟机、SWE-ReX 或其他专用隔离环境。
+Policy Engine 是风险分类器，不是操作系统沙箱；默认 Local Executor 仍在宿主机运行
+Bash。路径解析和字符串规则无法隔离 Shell 展开、解释器、子进程、挂载点、网络或未知
+二进制文件。不要在敏感主机上使用 Local Executor 运行不可信任务。
+
+可选 Docker Executor **只隔离 Bash**：它只把解析后的 Workspace 可写挂载到
+`/workspace`，使用宿主非 Root UID/GID，默认禁网，设置 CPU、内存和 PID 上限，并且不
+传入宿主 API Key 或 `HOME`。File Tools 仍在宿主进程中运行；隔离强度仍依赖 Docker
+Daemon、镜像、宿主内核和配置，因此不是绝对安全边界。
 
 ## 参考、归属与复用说明
 
-本仓库是独立实现，没有复制以下项目的源码文件或大段实现：
+本仓库是独立实现。以下内容明确区分当前设计实际参考的仓库、仅评估但未集成的项目和
+运行依赖；本仓库没有复制这些项目的源码文件或大段实现。
+
+### 当前设计实际参考
 
 - [`shareAI-lab/learn-claude-code`](https://github.com/shareAI-lab/learn-claude-code)
   （MIT）：参考其递进式 Agent Loop、工具注册和权限流程教学思路。本项目重新设计为
   Runtime、Policy、Trace、Replay、Eval 等独立模块，不包含其源码。
 - [`openai/codex`](https://github.com/openai/codex)（Apache-2.0）：仅参考
   “权限决策”和“执行隔离”分层的设计思想，不依赖 Codex，也未包含其源码。
+
+### 仅作对比，当前未集成
+
 - [`laude-institute/harbor`](https://github.com/laude-institute/harbor)：作为后续
   黑盒 Agent Benchmark 和 ATIF 轨迹兼容方向，MVP 未集成。
 - [`SWE-agent/SWE-ReX`](https://github.com/SWE-agent/SWE-ReX)：仅作为后续
   Sandbox Adapter 候选，当前未集成。
 
-直接运行时依赖包括 OpenAI Python SDK、Anthropic Python SDK、Pydantic、Typer 和
-PyYAML；测试与质量
-检查使用 pytest、pytest-asyncio、Ruff 和 MyPy。版本约束见
+### 运行依赖
+
+- [`anthropics/anthropic-sdk-python`](https://github.com/anthropics/anthropic-sdk-python)：
+  可选 Anthropic API 调用。
+- [`openai/openai-python`](https://github.com/openai/openai-python)：OpenAI Responses
+  API 和 OpenAI-compatible Endpoint 调用。
+- [`pydantic/pydantic`](https://github.com/pydantic/pydantic)：Schema 与参数校验。
+- [`fastapi/typer`](https://github.com/fastapi/typer)：CLI。
+- [`yaml/pyyaml`](https://github.com/yaml/pyyaml)：Eval Case 文件。
+- pytest、pytest-asyncio、Ruff 和 MyPy：测试与质量检查。
+
+版本约束见
 [`pyproject.toml`](pyproject.toml)，各依赖仍遵循其各自许可证。
 
 ## 开发检查

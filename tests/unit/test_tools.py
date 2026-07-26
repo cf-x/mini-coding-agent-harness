@@ -1,3 +1,5 @@
+import os
+import sys
 import time
 from pathlib import Path
 
@@ -15,6 +17,9 @@ from mini_harness.tools.base import (
 )
 from mini_harness.tools.filesystem import EditFileTool, ReadFileTool, WriteFileTool
 from mini_harness.tools.registry import ToolRegistry
+from mini_harness.tools.shell import shell_environment
+
+HARNESS_EXECUTABLE = os.path.realpath(sys.executable)
 
 
 def context(workspace: Path, *, timeout: float = 1, maximum: int = 1000) -> ToolContext:
@@ -195,6 +200,46 @@ async def test_bash_timeout_kills_process_group(tmp_path: Path) -> None:
     )
 
     assert result.status is ToolResultStatus.TIMEOUT
+
+
+@pytest.mark.asyncio
+async def test_bash_nonzero_exit_is_an_error(tmp_path: Path) -> None:
+    result = await default_registry().execute(
+        ToolCall(id="bash", name="bash", arguments={"command": "exit 7"}),
+        context(tmp_path),
+    )
+
+    assert result.status is ToolResultStatus.ERROR
+    assert result.exit_code == 7
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("command", ["python", "python3"])
+async def test_shell_python_matches_harness_interpreter(tmp_path: Path, command: str) -> None:
+    result = await default_registry().execute(
+        ToolCall(
+            id=command,
+            name="bash",
+            arguments={
+                "command": (
+                    f"{command} -c 'import os, sys; print(os.path.realpath(sys.executable))'"
+                )
+            },
+        ),
+        context(tmp_path),
+    )
+
+    assert result.status is ToolResultStatus.SUCCESS
+    assert result.output.strip() == HARNESS_EXECUTABLE
+
+
+def test_shell_environment_is_minimal_and_workspace_scoped(tmp_path: Path) -> None:
+    environment = shell_environment(tmp_path)
+
+    assert environment["HOME"] == str(tmp_path)
+    assert environment["PATH"].split(os.pathsep)[0] == str(Path(sys.executable).resolve().parent)
+    assert "OPENAI_API_KEY" not in environment
+    assert "ANTHROPIC_API_KEY" not in environment
 
 
 @pytest.mark.asyncio

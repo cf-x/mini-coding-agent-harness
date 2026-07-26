@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any, Literal
 
 from openai import AsyncOpenAI, PermissionDeniedError
@@ -14,8 +15,9 @@ DEFAULT_OPENAI_MODEL = "gpt-5.6-terra"
 DEFAULT_SYSTEM_PROMPT = """You are a coding agent working inside one workspace.
 Use the provided tools to inspect and modify the workspace. Keep changes scoped to the task.
 Run the relevant tests before finishing.
-When the task is complete, return a concise final response."""
+After the relevant tests pass, do not call more tools. Return a concise final response."""
 OpenAIToolMode = Literal["auto", "function", "prompt"]
+OpenAIClientProfile = Literal["standard", "codex"]
 PROMPT_TOOL_RESPONSE_SHAPE = (
     '{"content":"text for the user or empty","tool_calls":['
     '{"id":"unique id","name":"tool name","arguments":{}}]}'
@@ -38,20 +40,32 @@ class OpenAIModelClient:
         base_url: str | None = None,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         tool_mode: OpenAIToolMode = "auto",
+        client_profile: OpenAIClientProfile = "standard",
         client: AsyncOpenAI | None = None,
     ) -> None:
         self.model = model
         self.max_output_tokens = max_output_tokens
         self.system_prompt = system_prompt
         self.tool_mode = tool_mode
+        self.client_profile = client_profile
         self._active_tool_mode: Literal["function", "prompt"] = (
             "function" if tool_mode in {"auto", "function"} else "prompt"
         )
         client_options: dict[str, Any] = {"api_key": api_key}
         if base_url is not None:
             client_options["base_url"] = base_url
+        if client_profile == "codex":
+            client_options["default_headers"] = {
+                "User-Agent": (
+                    "codex_cli_rs/0.114.0 (macOS 15.0; arm64) Terminal.app (codex_cli_rs; 0.114.0)"
+                ),
+                "originator": "codex_cli_rs",
+                "x-codex-window-id": str(uuid.uuid4()),
+                "OpenAI-Beta": "responses=experimental",
+            }
         self._client = client or AsyncOpenAI(**client_options)
         self._previous_response_id: str | None = None
+        self._stateless_input: list[Any] = []
 
     async def complete(
         self,
@@ -80,13 +94,15 @@ class OpenAIModelClient:
             "tools": [self._tool(tool) for tool in tools],
             "max_output_tokens": self.max_output_tokens,
             "parallel_tool_calls": True,
-            "store": True,
+            "store": self.client_profile != "codex",
         }
-        if self._previous_response_id is not None:
+        if self.client_profile == "codex":
+            request["include"] = ["reasoning.encrypted_content"]
+        elif self._previous_response_id is not None:
             request["previous_response_id"] = self._previous_response_id
 
         response = await self._client.responses.create(**request)
-        self._previous_response_id = response.id
+        self._advance_conversation(request["input"], response)
         tool_calls: list[ToolCall] = []
         for item in response.output:
             if item.type != "function_call":
@@ -119,13 +135,15 @@ class OpenAIModelClient:
             "instructions": self._prompt_instructions(tools),
             "input": self._prompt_request_input(messages),
             "max_output_tokens": self.max_output_tokens,
-            "store": True,
+            "store": self.client_profile != "codex",
         }
-        if self._previous_response_id is not None:
+        if self.client_profile == "codex":
+            request["include"] = ["reasoning.encrypted_content"]
+        elif self._previous_response_id is not None:
             request["previous_response_id"] = self._previous_response_id
 
         response = await self._client.responses.create(**request)
-        self._previous_response_id = response.id
+        self._advance_conversation(request["input"], response)
         content, tool_calls = self._parse_prompt_response(response.output_text)
         return ModelResponse(
             content=content,
@@ -135,6 +153,12 @@ class OpenAIModelClient:
         )
 
     def _function_request_input(self, messages: list[Message]) -> list[dict[str, Any]]:
+        if self._stateless_input:
+            tool_messages = self._latest_tool_messages(messages)
+            if not tool_messages:
+                raise ValueError("a continued Responses API turn requires at least one tool result")
+            tool_outputs = [self._tool_output(message) for message in tool_messages]
+            return [*self._stateless_input, *tool_outputs]
         if self._previous_response_id is None:
             return self._initial_input(messages)
 
@@ -144,7 +168,7 @@ class OpenAIModelClient:
         return [self._tool_output(message) for message in tool_messages]
 
     def _prompt_request_input(self, messages: list[Message]) -> list[dict[str, Any]]:
-        if self._previous_response_id is None:
+        if not self._stateless_input and self._previous_response_id is None:
             return self._initial_input(messages)
         tool_messages = self._latest_tool_messages(messages)
         if not tool_messages:
@@ -160,7 +184,7 @@ class OpenAIModelClient:
             }
             for message in tool_messages
         ]
-        return [
+        new_input = [
             {
                 "role": "user",
                 "content": (
@@ -169,6 +193,13 @@ class OpenAIModelClient:
                 ),
             }
         ]
+        return [*self._stateless_input, *new_input]
+
+    def _advance_conversation(self, request_input: list[Any], response: Any) -> None:
+        if self.client_profile == "codex":
+            self._stateless_input = [*request_input, *response.output]
+            return
+        self._previous_response_id = response.id
 
     @staticmethod
     def _initial_input(messages: list[Message]) -> list[dict[str, Any]]:

@@ -2,6 +2,7 @@ name: max_rounds
 description: Stops a model that keeps requesting tools.
 task: Keep reading loop.txt forever.
 max_turns: 2
+finalization_turn: false
 responses:
   - tool_calls:
       - id: call_loop_1

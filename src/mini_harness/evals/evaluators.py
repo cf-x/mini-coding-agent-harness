@@ -16,7 +16,22 @@ from mini_harness.evals.case import (
     PolicyDecisionExpectation,
 )
 from mini_harness.runtime import RunResult
+from mini_harness.tools.shell import shell_environment
 from mini_harness.trace.matcher import Divergence
+
+ARTIFACT_EVALUATORS = frozenset({"FileExists", "FileContains", "CommandExitCode"})
+RUNTIME_EVALUATORS = frozenset({"RunStatusEquals"})
+TOOL_CONTRACT_EVALUATORS = frozenset(
+    {
+        "ToolCalled",
+        "ToolCalledAny",
+        "ToolNotCalled",
+        "PolicyDecisionEquals",
+        "MaxToolCalls",
+        "ToolOutputTruncated",
+        "ToolStatusEquals",
+    }
+)
 
 
 class AssertionResult(BaseModel):
@@ -79,6 +94,7 @@ class CommandExitCode:
         process = await asyncio.create_subprocess_shell(
             self.expectation.command,
             cwd=context.workspace,
+            env=shell_environment(context.workspace),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
@@ -113,6 +129,25 @@ class ToolCalled:
             evaluator="ToolCalled",
             passed=passed,
             message=f"{self.tool_name} {'was' if passed else 'was not'} called",
+        )
+
+
+@dataclass(frozen=True)
+class ToolCalledAny:
+    tool_names: list[str]
+
+    async def evaluate(self, context: EvalContext) -> AssertionResult:
+        called = {result.tool_name for result in context.run.tool_results}
+        matched = sorted(called.intersection(self.tool_names))
+        passed = bool(matched)
+        return AssertionResult(
+            evaluator="ToolCalledAny",
+            passed=passed,
+            message=(
+                f"called one of {self.tool_names}: {matched}"
+                if passed
+                else f"none of {self.tool_names} were called"
+            ),
         )
 
 
@@ -251,6 +286,7 @@ def build_evaluators(expected: ExpectedOutcomes) -> list[Evaluator]:
     evaluators.extend(FileContains(item) for item in expected.file_contains)
     evaluators.extend(CommandExitCode(item) for item in expected.command_exit_code)
     evaluators.extend(ToolCalled(name) for name in expected.tool_called)
+    evaluators.extend(ToolCalledAny(names) for names in expected.tool_called_any)
     evaluators.extend(ToolNotCalled(name) for name in expected.tool_not_called)
     evaluators.extend(PolicyDecisionEquals(item) for item in expected.policy_decision_equals)
     if expected.max_tool_calls is not None:

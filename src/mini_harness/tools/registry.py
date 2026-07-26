@@ -77,10 +77,15 @@ class ToolRegistry:
             )
 
         output, truncated = truncate_output(execution.output, context.max_output_chars)
+        status = (
+            ToolResultStatus.ERROR
+            if execution.exit_code is not None and execution.exit_code != 0
+            else ToolResultStatus.SUCCESS
+        )
         return ToolResult(
             tool_call_id=call.id,
             tool_name=call.name,
-            status=ToolResultStatus.SUCCESS,
+            status=status,
             output=output,
             duration_ms=self._duration_ms(started),
             truncated=truncated,

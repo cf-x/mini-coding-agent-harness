@@ -204,6 +204,7 @@ class EvalRunner:
         config = HarnessConfig(
             workspace=workspace,
             max_turns=case.max_turns,
+            finalization_turn=case.finalization_turn,
             tool_timeout_seconds=case.tool_timeout_seconds,
             max_output_chars=case.max_output_chars,
             write_policy=case.write_policy,

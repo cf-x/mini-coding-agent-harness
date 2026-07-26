@@ -1,15 +1,25 @@
 [mini_harness]
 workspace = "."
 max_turns = 12
+finalization_turn = true
 tool_timeout_seconds = 30
 max_output_chars = 20000
 write_policy = "ask"
 shell_policy = "ask"
+# Bash runs locally unless run/live-eval explicitly selects Docker.
+executor = "local"
+# Docker uses an existing local image and never pulls it implicitly.
+docker_image = "python:3.12-slim"
+docker_cpus = 1.0
+docker_memory_mb = 512
+docker_pids_limit = 128
 trace_dir = "traces"
 provider = "openai"
 model = "gpt-5.6-terra"
 max_model_tokens = 4096
 openai_tool_mode = "auto"
+# Use "codex" only for gateways that explicitly require the Codex Responses client contract.
+openai_client_profile = "standard"
 # Use the full OpenAI-compatible API root, normally ending in /v1.
 # openai_base_url = "https://api.openai.com/v1"
 sensitive_paths = [".env", "*.pem", "*.key", "*credentials*"]

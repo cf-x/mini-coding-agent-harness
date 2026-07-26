@@ -2,8 +2,6 @@
 
 [简体中文](README.zh-CN.md)
 
-[![CI](https://github.com/cf-x/mini-coding-agent-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/cf-x/mini-coding-agent-harness/actions/workflows/ci.yml)
-
 A small, testable coding-agent harness with explicit policy checks, append-only JSONL
 traces, offline model-response replay, and deterministic evaluations.
 
@@ -23,6 +21,7 @@ credential-free live-case validation. It does not depict a fabricated real-model
 
 - A provider-neutral async agent loop with bounded turns.
 - `read_file`, `write_file`, `edit_file`, and `bash` tools.
+- Injectable Local and Docker command executors for `bash`.
 - Pydantic validation at the tool boundary.
 - Workspace path containment, including resolved symlink checks.
 - `allow`, `ask`, and `deny` policy decisions before execution.
@@ -36,7 +35,7 @@ credential-free live-case validation. It does not depict a fabricated real-model
 - Unit, integration, CLI, and end-to-end eval tests.
 
 This project intentionally does **not** include multi-agent orchestration, task DAGs,
-MCP, durable execution, a web UI, or an OS-level sandbox.
+MCP, durable execution, a web UI, or a production-grade sandbox.
 
 ## Architecture
 
@@ -72,7 +71,6 @@ every model tool request receives exactly one result.
 Python 3.11 or newer is required.
 
 ```bash
-git clone https://github.com/cf-x/mini-coding-agent-harness.git
 cd mini-coding-agent-harness
 python3.12 -m venv .venv
 source .venv/bin/activate
@@ -85,18 +83,16 @@ The eval command uses scripted model responses and sends no network request.
 For a live OpenAI run:
 
 ```bash
-export OPENAI_API_KEY="..."
-mini-harness run \
+./scripts/macos-keychain-openai setup  # first use or credential rotation only
+./scripts/macos-keychain-openai run run \
   --workspace ./example-workspace \
   "Inspect the tests, fix the bug, and run the relevant test command."
 ```
 
-OpenAI-compatible gateways can be selected without storing credentials:
-
-```bash
-export OPENAI_BASE_URL="https://your-gateway.example/v1"
-mini-harness run --workspace ./example-workspace "Fix the failing tests."
-```
+On macOS, the wrapper stores an OpenAI-style `sk-` key and optional base URL in the login
+Keychain, then injects them only into the repository's `.venv/bin/mini-harness` process.
+Linux, CI, and temporary runs can still use the `OPENAI_API_KEY` and optional
+`OPENAI_BASE_URL` environment variables. Never commit real values.
 
 The default `--tool-mode auto` uses native Responses function tools. If a compatible gateway
 explicitly rejects function tools, it can fall back on a JSON prompt protocol. Use
@@ -104,16 +100,35 @@ explicitly rejects function tools, it can fall back on a JSON prompt protocol. U
 compatibility path explicitly. Reports identify the configured backend; prompt mode is not
 presented as native function calling.
 
+Some gateways restrict OpenAI subscription-backed accounts to the Codex Responses client
+contract. Select `--client-profile codex` explicitly for those gateways; the default
+`standard` profile keeps normal OpenAI SDK headers. This setting contains no credential and
+does not change how `OPENAI_API_KEY` is loaded. The Codex profile uses stateless HTTP
+continuation because compatible gateways may reserve `previous_response_id` for Responses
+WebSocket v2.
+
 Writes and shell commands default to `ask`. Use `--auto-approve` only in a workspace you
 control. A live trace is written under `<workspace>/traces/`.
+
+`bash` remains local by default. To run only Bash commands in a short-lived Docker
+container, make the configured image available locally, then select the executor explicitly:
+
+```bash
+docker pull python:3.12-slim
+mini-harness run --executor docker --docker-image python:3.12-slim \
+  --workspace ./example-workspace "Inspect the tests and fix the bug."
+```
+
+The Harness never pulls an image implicitly. CPU, memory, and PID limits can be set with
+`--docker-cpus`, `--docker-memory-mb`, and `--docker-pids-limit`, or in TOML.
 
 ## CLI
 
 ```text
-mini-harness run TASK [--workspace PATH] [--config FILE] [--trace FILE]
+mini-harness run TASK [--workspace PATH] [--executor local|docker] [--config FILE]
 mini-harness replay TRACE [--workspace PATH] [--output-trace FILE]
 mini-harness eval [CASES_DIR] [--json]
-mini-harness live-eval [CASES_DIR] [--runs 3] [--validate-only]
+mini-harness live-eval [CASES_DIR] [--executor local|docker] [--validate-only]
 mini-harness trace TRACE
 ```
 
@@ -193,8 +208,7 @@ mini-harness live-eval evals/live_cases --validate-only
 Run the intended 5 cases x 3 attempts only when a working model credential is available:
 
 ```bash
-export OPENAI_API_KEY="..."
-mini-harness live-eval evals/live_cases --runs 3
+./scripts/macos-keychain-openai run live-eval evals/live_cases --runs 3
 ```
 
 Every attempt starts from a clean fixture and is accepted by file assertions and `unittest`
@@ -202,10 +216,18 @@ exit codes, not an LLM judge. For `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-l
 estimates use [OpenAI Standard API pricing](https://developers.openai.com/api/docs/pricing)
 and record that source with the result. A compatible gateway's actual bill may differ.
 
-This revision does not publish a 15-attempt model success rate because the supplied compatible
-endpoint began returning HTTP 403 for all generation requests during validation. The runner,
-cases, usage accounting, official-price estimate, and provider-error evidence are implemented;
-no successful live result is fabricated.
+Two versioned 15-attempt `gpt-5.6-terra` runs completed on 2026-07-26. v1 preserved the
+original strict result of 7/15 (46.7%) and exposed an over-specific edit-tool rubric plus a
+Python environment mismatch. v2 pinned the Harness interpreter, added layered metrics and a
+bounded finalization path, and accepted either supported file-modification tool. It passed
+13/15 strictly (86.7%), reached 100% Pass@3, completed 15/15 runtimes, and retained 15/15
+artifact correctness. The remaining two failures were isolated `read_file` contract
+deviations. The rubric change means the strict scores are versioned rather than a pure
+model-only comparison. See the [v1 analysis](docs/live-eval-2026-07-26.md) and
+[sanitized v1/v2 comparison](docs/live-eval-v1-v2-comparison.md).
+The [local live-eval runbook](docs/live-eval-runbook.zh-CN.md) documents Python selection,
+macOS Keychain setup, temporary environment-variable fallback, gateway profiles, smoke
+testing, versioned reruns, and sanitization checks.
 
 ## Inspectable evidence
 
@@ -235,33 +257,28 @@ revision:
 Verified on 2026-07-26 with Python 3.12.13 on macOS arm64:
 
 - Ruff lint and format checks: passed.
-- MyPy strict check: passed for 41 checked source/test files.
-- pytest: 48 passed.
+- MyPy strict check: passed for 44 checked source/test files.
+- pytest: 71 passed, including real Docker integration coverage for workspace isolation,
+  minimal environment, non-root execution, disabled networking, and timeout cleanup.
 - deterministic evals: 10/10 cases passed.
-- task pass rate: 100.0%.
-- average turns: 2.20.
-- average tool calls: 1.30.
-- tool error rate: 23.1%.
-- policy denials: 2.
-- replay match rate: 50.0%.
-- average run duration: 22.30 ms in one local sample.
-
-The tool-error rate includes intentional error, timeout, and unknown-tool results. The
-replay-match rate includes one intentionally divergent replay, so a 50% raw match rate is
-compatible with all replay assertions passing. Duration is environment-dependent and is
-not a performance claim.
 
 <!-- VERIFIED_RESULTS_END -->
 
 ## Security boundary
 
-The policy engine is a transparent risk classifier, **not a security sandbox**.
+The policy engine is a transparent risk classifier, **not a security sandbox**. The default
+Local executor still runs Bash on the host.
 
 It resolves file paths and symlinks against one workspace and rejects several obvious
 destructive command forms. String matching cannot cover shell expansion, interpreters,
 child processes, filesystem mounts, network access, or unknown binaries. Do not run
-untrusted tasks on a sensitive host. A production version should execute tools inside an
-isolation layer such as a container, VM, SWE-ReX, or another purpose-built sandbox.
+untrusted tasks with the Local executor on a sensitive host.
+
+The optional Docker executor isolates **only `bash`**. It bind-mounts the resolved Workspace
+read-write at `/workspace`, runs with the host's non-root UID/GID, disables networking by
+default, applies CPU/memory/PID limits, and passes no host API keys or `HOME`. File Tools
+remain in the host process. Container isolation still depends on the Docker daemon, image,
+host kernel, and configuration; it is not an absolute security boundary.
 
 ## Development
 
@@ -292,10 +309,11 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for change requirements and
 
 ## References, attribution, and reuse
 
-The repository is an original implementation. It does not copy source files or substantial
-code blocks from the projects below.
+The repository is an original implementation. The lists below distinguish projects consulted
+for the current design from comparison candidates and runtime dependencies. It does not copy
+source files or substantial code blocks from these projects.
 
-### Design references
+### Repositories consulted for the current design
 
 - [`shareAI-lab/learn-claude-code`](https://github.com/shareAI-lab/learn-claude-code)
   (MIT): the progressive teaching examples informed the basic agent-loop, tool-dispatch,
@@ -304,6 +322,9 @@ code blocks from the projects below.
 - [`openai/codex`](https://github.com/openai/codex) (Apache-2.0): referenced at a
   conceptual level for separating permission decisions from execution isolation. Codex is
   not a dependency and no Codex source is included.
+
+### Comparison projects, not integrated
+
 - [`laude-institute/harbor`](https://github.com/laude-institute/harbor): referenced for
   future black-box agent evaluation and trajectory interoperability, including ATIF. Harbor
   is not part of the MVP and no Harbor code is included.
