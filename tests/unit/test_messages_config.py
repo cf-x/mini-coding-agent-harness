@@ -61,6 +61,25 @@ def test_relative_trace_directory_is_workspace_relative(tmp_path: Path) -> None:
     assert config.resolved_trace_dir() == (tmp_path / "trace-output").resolve()
 
 
+def test_executor_defaults_local_and_accepts_docker_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert HarnessConfig().executor == "local"
+    monkeypatch.setenv("MINI_HARNESS_EXECUTOR", "docker")
+    monkeypatch.setenv("MINI_HARNESS_DOCKER_IMAGE", "example/python:test")
+    monkeypatch.setenv("MINI_HARNESS_DOCKER_CPUS", "2")
+    monkeypatch.setenv("MINI_HARNESS_DOCKER_MEMORY_MB", "1024")
+    monkeypatch.setenv("MINI_HARNESS_DOCKER_PIDS_LIMIT", "96")
+
+    config = load_config()
+
+    assert config.executor == "docker"
+    assert config.docker_image == "example/python:test"
+    assert config.docker_cpus == 2
+    assert config.docker_memory_mb == 1024
+    assert config.docker_pids_limit == 96
+
+
 def test_openai_environment_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_BASE_URL", "https://gateway.example/v1")
     monkeypatch.setenv("MINI_HARNESS_OPENAI_TOOL_MODE", "prompt")

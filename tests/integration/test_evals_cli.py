@@ -59,6 +59,26 @@ def test_live_eval_validate_only_needs_no_api_key(
     assert "no model requests sent" in result.output
 
 
+def test_live_eval_validate_only_accepts_docker_without_starting_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "live-eval",
+            str(PROJECT_ROOT / "evals" / "live_cases"),
+            "--validate-only",
+            "--executor",
+            "docker",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "validated 5 live eval cases" in result.output
+
+
 @pytest.mark.asyncio
 async def test_live_eval_persists_incremental_reports(tmp_path: Path) -> None:
     cases = tmp_path / "cases"

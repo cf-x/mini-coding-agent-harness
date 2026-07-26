@@ -24,6 +24,7 @@ from mini_harness.evals.evaluators import (
     build_evaluators,
 )
 from mini_harness.evals.live_case import LiveEvalCase
+from mini_harness.executors import CommandExecutor, LocalCommandExecutor
 from mini_harness.messages import ModelUsage, ToolResultStatus
 from mini_harness.models.base import ModelClient
 from mini_harness.policy.approval import AlwaysApprove
@@ -267,6 +268,7 @@ class LiveEvalRunner:
         runs_per_case: int = 3,
         pricing: LivePricing | None = None,
         git_commit: str = "unknown",
+        command_executor: CommandExecutor | None = None,
     ) -> None:
         if runs_per_case < 1:
             raise ValueError("runs_per_case must be at least 1")
@@ -278,6 +280,7 @@ class LiveEvalRunner:
         self.runs_per_case = runs_per_case
         self.pricing = pricing or official_openai_pricing(model_name) or LivePricing()
         self.git_commit = git_commit
+        self.command_executor = command_executor or LocalCommandExecutor()
 
     def discover(self) -> list[tuple[Path, LiveEvalCase]]:
         discovered: list[tuple[Path, LiveEvalCase]] = []
@@ -341,7 +344,7 @@ class LiveEvalRunner:
             run_id = f"live_{case.name}_{attempt}_{uuid.uuid4().hex}"
             runtime = AgentRuntime(
                 model=self.model_factory(),
-                tools=default_registry(),
+                tools=default_registry(self.command_executor),
                 policy=PolicyEngine(
                     workspace,
                     write_policy=case.write_policy,

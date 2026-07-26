@@ -17,6 +17,7 @@ from mini_harness.evals.live_report import format_live_text_report
 from mini_harness.evals.live_runner import LiveEvalRunner, LivePricing
 from mini_harness.evals.report import format_json_report, format_text_report
 from mini_harness.evals.runner import EvalRunner
+from mini_harness.executors import create_command_executor
 from mini_harness.models.anthropic import AnthropicModelClient
 from mini_harness.models.base import ModelClient
 from mini_harness.models.openai import OpenAIModelClient
@@ -71,6 +72,26 @@ def run_command(
         str | None,
         typer.Option("--client-profile", help="OpenAI client profile: standard or codex."),
     ] = None,
+    executor: Annotated[
+        str | None,
+        typer.Option("--executor", help="Bash executor: local or docker."),
+    ] = None,
+    docker_image: Annotated[
+        str | None,
+        typer.Option("--docker-image", help="Existing local image used by the Docker executor."),
+    ] = None,
+    docker_cpus: Annotated[
+        float | None,
+        typer.Option("--docker-cpus", min=0.01, help="Docker CPU limit."),
+    ] = None,
+    docker_memory_mb: Annotated[
+        int | None,
+        typer.Option("--docker-memory-mb", min=64, help="Docker memory limit in MiB."),
+    ] = None,
+    docker_pids_limit: Annotated[
+        int | None,
+        typer.Option("--docker-pids-limit", min=16, help="Docker process-count limit."),
+    ] = None,
 ) -> None:
     """Run a task against a live model API."""
 
@@ -82,6 +103,11 @@ def run_command(
         openai_base_url=base_url,
         openai_tool_mode=tool_mode,
         openai_client_profile=client_profile,
+        executor=executor,
+        docker_image=docker_image,
+        docker_cpus=docker_cpus,
+        docker_memory_mb=docker_memory_mb,
+        docker_pids_limit=docker_pids_limit,
     )
     _require_api_key(config.provider)
     model = _create_model_client(config)
@@ -188,6 +214,26 @@ def live_eval_command(
         str | None,
         typer.Option("--client-profile", help="OpenAI client profile: standard or codex."),
     ] = None,
+    executor: Annotated[
+        str | None,
+        typer.Option("--executor", help="Bash executor: local or docker."),
+    ] = None,
+    docker_image: Annotated[
+        str | None,
+        typer.Option("--docker-image", help="Existing local image used by the Docker executor."),
+    ] = None,
+    docker_cpus: Annotated[
+        float | None,
+        typer.Option("--docker-cpus", min=0.01, help="Docker CPU limit."),
+    ] = None,
+    docker_memory_mb: Annotated[
+        int | None,
+        typer.Option("--docker-memory-mb", min=64, help="Docker memory limit in MiB."),
+    ] = None,
+    docker_pids_limit: Annotated[
+        int | None,
+        typer.Option("--docker-pids-limit", min=16, help="Docker process-count limit."),
+    ] = None,
     validate_only: Annotated[
         bool,
         typer.Option("--validate-only", help="Validate cases without API requests."),
@@ -218,6 +264,11 @@ def live_eval_command(
         openai_base_url=base_url,
         openai_tool_mode=tool_mode,
         openai_client_profile=client_profile,
+        executor=executor,
+        docker_image=docker_image,
+        docker_cpus=docker_cpus,
+        docker_memory_mb=docker_memory_mb,
+        docker_pids_limit=docker_pids_limit,
     )
     pricing = None
     if any(
@@ -250,6 +301,7 @@ def live_eval_command(
         runs_per_case=runs,
         pricing=pricing,
         git_commit=_git_commit(),
+        command_executor=create_command_executor(config),
     )
     if validate_only:
         cases = runner.validate()
@@ -308,7 +360,7 @@ async def _run_runtime(
     )
     runtime = AgentRuntime(
         model=model,
-        tools=default_registry(),
+        tools=default_registry(create_command_executor(config)),
         policy=PolicyEngine(
             config.workspace,
             write_policy=config.write_policy,

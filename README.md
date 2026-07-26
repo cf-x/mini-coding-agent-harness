@@ -23,6 +23,7 @@ credential-free live-case validation. It does not depict a fabricated real-model
 
 - A provider-neutral async agent loop with bounded turns.
 - `read_file`, `write_file`, `edit_file`, and `bash` tools.
+- Injectable Local and Docker command executors for `bash`.
 - Pydantic validation at the tool boundary.
 - Workspace path containment, including resolved symlink checks.
 - `allow`, `ask`, and `deny` policy decisions before execution.
@@ -36,7 +37,7 @@ credential-free live-case validation. It does not depict a fabricated real-model
 - Unit, integration, CLI, and end-to-end eval tests.
 
 This project intentionally does **not** include multi-agent orchestration, task DAGs,
-MCP, durable execution, a web UI, or an OS-level sandbox.
+MCP, durable execution, a web UI, or a production-grade sandbox.
 
 ## Architecture
 
@@ -112,13 +113,25 @@ WebSocket v2.
 Writes and shell commands default to `ask`. Use `--auto-approve` only in a workspace you
 control. A live trace is written under `<workspace>/traces/`.
 
+`bash` remains local by default. To run only Bash commands in a short-lived Docker
+container, make the configured image available locally, then select the executor explicitly:
+
+```bash
+docker pull python:3.12-slim
+mini-harness run --executor docker --docker-image python:3.12-slim \
+  --workspace ./example-workspace "Inspect the tests and fix the bug."
+```
+
+The Harness never pulls an image implicitly. CPU, memory, and PID limits can be set with
+`--docker-cpus`, `--docker-memory-mb`, and `--docker-pids-limit`, or in TOML.
+
 ## CLI
 
 ```text
-mini-harness run TASK [--workspace PATH] [--config FILE] [--trace FILE]
+mini-harness run TASK [--workspace PATH] [--executor local|docker] [--config FILE]
 mini-harness replay TRACE [--workspace PATH] [--output-trace FILE]
 mini-harness eval [CASES_DIR] [--json]
-mini-harness live-eval [CASES_DIR] [--runs 3] [--validate-only]
+mini-harness live-eval [CASES_DIR] [--executor local|docker] [--validate-only]
 mini-harness trace TRACE
 ```
 
@@ -247,21 +260,27 @@ revision:
 Verified on 2026-07-26 with Python 3.12.13 on macOS arm64:
 
 - Ruff lint and format checks: passed.
-- MyPy strict check: passed for 41 checked source/test files.
-- pytest: 57 passed.
+- MyPy strict check: passed for 44 checked source/test files.
+- pytest: 67 passed, 4 Docker integration tests skipped because Docker CLI was unavailable.
 - deterministic evals: 10/10 cases passed.
 
 <!-- VERIFIED_RESULTS_END -->
 
 ## Security boundary
 
-The policy engine is a transparent risk classifier, **not a security sandbox**.
+The policy engine is a transparent risk classifier, **not a security sandbox**. The default
+Local executor still runs Bash on the host.
 
 It resolves file paths and symlinks against one workspace and rejects several obvious
 destructive command forms. String matching cannot cover shell expansion, interpreters,
 child processes, filesystem mounts, network access, or unknown binaries. Do not run
-untrusted tasks on a sensitive host. A production version should execute tools inside an
-isolation layer such as a container, VM, SWE-ReX, or another purpose-built sandbox.
+untrusted tasks with the Local executor on a sensitive host.
+
+The optional Docker executor isolates **only `bash`**. It bind-mounts the resolved Workspace
+read-write at `/workspace`, runs with the host's non-root UID/GID, disables networking by
+default, applies CPU/memory/PID limits, and passes no host API keys or `HOME`. File Tools
+remain in the host process. Container isolation still depends on the Docker daemon, image,
+host kernel, and configuration; it is not an absolute security boundary.
 
 ## Development
 

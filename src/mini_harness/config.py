@@ -21,6 +21,11 @@ class HarnessConfig(BaseModel):
     max_output_chars: int = Field(default=20_000, ge=64)
     write_policy: Literal["allow", "ask", "deny"] = "ask"
     shell_policy: Literal["allow", "ask", "deny"] = "ask"
+    executor: Literal["local", "docker"] = "local"
+    docker_image: str = Field(default="python:3.12-slim", min_length=1)
+    docker_cpus: float = Field(default=1.0, gt=0, le=64)
+    docker_memory_mb: int = Field(default=512, ge=64, le=262_144)
+    docker_pids_limit: int = Field(default=128, ge=16, le=1_048_576)
     trace_dir: Path = Path("traces")
     provider: Literal["openai", "anthropic"] = "openai"
     model: str = "gpt-5.6-terra"
@@ -64,6 +69,11 @@ _ENV_MAPPING: dict[str, tuple[str, Callable[[str], object]]] = {
     "MINI_HARNESS_MAX_OUTPUT_CHARS": ("max_output_chars", int),
     "MINI_HARNESS_WRITE_POLICY": ("write_policy", str),
     "MINI_HARNESS_SHELL_POLICY": ("shell_policy", str),
+    "MINI_HARNESS_EXECUTOR": ("executor", str),
+    "MINI_HARNESS_DOCKER_IMAGE": ("docker_image", str),
+    "MINI_HARNESS_DOCKER_CPUS": ("docker_cpus", float),
+    "MINI_HARNESS_DOCKER_MEMORY_MB": ("docker_memory_mb", int),
+    "MINI_HARNESS_DOCKER_PIDS_LIMIT": ("docker_pids_limit", int),
     "MINI_HARNESS_PROVIDER": ("provider", str),
     "MINI_HARNESS_MODEL": ("model", str),
     "MINI_HARNESS_OPENAI_TOOL_MODE": ("openai_tool_mode", str),
