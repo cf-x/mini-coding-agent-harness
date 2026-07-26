@@ -26,6 +26,7 @@ class HarnessConfig(BaseModel):
     max_model_tokens: int = Field(default=4096, ge=1)
     openai_base_url: str | None = None
     openai_tool_mode: Literal["auto", "function", "prompt"] = "auto"
+    openai_client_profile: Literal["standard", "codex"] = "standard"
     sensitive_paths: list[str] = Field(
         default_factory=lambda: [".env", "*.pem", "*.key", "*credentials*"]
     )
@@ -55,6 +56,7 @@ _ENV_MAPPING: dict[str, tuple[str, Callable[[str], object]]] = {
     "MINI_HARNESS_PROVIDER": ("provider", str),
     "MINI_HARNESS_MODEL": ("model", str),
     "MINI_HARNESS_OPENAI_TOOL_MODE": ("openai_tool_mode", str),
+    "MINI_HARNESS_OPENAI_CLIENT_PROFILE": ("openai_client_profile", str),
     "OPENAI_BASE_URL": ("openai_base_url", str),
 }
 

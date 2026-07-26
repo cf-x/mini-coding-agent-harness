@@ -10,6 +10,8 @@ provider = "openai"
 model = "gpt-5.6-terra"
 max_model_tokens = 4096
 openai_tool_mode = "auto"
+# Use "codex" only for gateways that explicitly require the Codex Responses client contract.
+openai_client_profile = "standard"
 # Use the full OpenAI-compatible API root, normally ending in /v1.
 # openai_base_url = "https://api.openai.com/v1"
 sensitive_paths = [".env", "*.pem", "*.key", "*credentials*"]

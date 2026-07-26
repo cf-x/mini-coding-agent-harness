@@ -5,6 +5,7 @@ from typing import Any, cast
 import pytest
 from openai import AsyncOpenAI
 
+import mini_harness.models.openai as openai_module
 from mini_harness.messages import Message, ToolCall, ToolResultStatus
 from mini_harness.models.openai import OpenAIModelClient
 from mini_harness.tools.base import ToolDefinition
@@ -139,6 +140,84 @@ def test_openai_tool_definition_uses_responses_shape() -> None:
         "description": "Run a command.",
         "parameters": {"type": "object"},
     }
+
+
+def test_codex_client_profile_sets_gateway_identity_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakeAsyncOpenAI:
+        def __init__(self, **options: Any) -> None:
+            captured.update(options)
+
+    monkeypatch.setattr(openai_module, "AsyncOpenAI", FakeAsyncOpenAI)
+
+    OpenAIModelClient(
+        model="gpt-test",
+        api_key="test-key",
+        base_url="https://gateway.example/v1",
+        client_profile="codex",
+    )
+
+    headers = captured["default_headers"]
+    assert headers["User-Agent"].startswith("codex_cli_rs/0.114.0")
+    assert headers["originator"] == "codex_cli_rs"
+    assert headers["x-codex-window-id"]
+    assert headers["OpenAI-Beta"] == "responses=experimental"
+
+
+@pytest.mark.asyncio
+async def test_codex_client_profile_uses_stateless_http_continuation() -> None:
+    first_output = SimpleNamespace(
+        type="function_call",
+        call_id="call_codex",
+        name="read_file",
+        arguments='{"path":"note.txt"}',
+    )
+    responses = FakeResponses(
+        [
+            fake_response("resp_codex_1", output=[first_output]),
+            fake_response("resp_codex_2", output_text="done"),
+        ]
+    )
+    client = OpenAIModelClient(
+        model="gpt-test",
+        api_key="test-key",
+        client_profile="codex",
+        client=cast(AsyncOpenAI, SimpleNamespace(responses=responses)),
+    )
+    tools = [
+        ToolDefinition(
+            name="read_file",
+            description="Read a file.",
+            input_schema={"type": "object"},
+        )
+    ]
+
+    first = await client.complete([Message(role="user", content="read note")], tools)
+    await client.complete(
+        [
+            Message(role="user", content="read note"),
+            Message(role="assistant", tool_calls=first.tool_calls),
+            Message(
+                role="tool",
+                content="hello",
+                tool_call_id="call_codex",
+                tool_name="read_file",
+                tool_status=ToolResultStatus.SUCCESS,
+            ),
+        ],
+        tools,
+    )
+
+    initial_request, continued_request = responses.requests
+    assert initial_request["store"] is False
+    assert initial_request["include"] == ["reasoning.encrypted_content"]
+    assert "previous_response_id" not in continued_request
+    assert continued_request["input"][0] == {"role": "user", "content": "read note"}
+    assert continued_request["input"][1] is first_output
+    assert continued_request["input"][2]["type"] == "function_call_output"
 
 
 @pytest.mark.asyncio

@@ -104,6 +104,13 @@ explicitly rejects function tools, it can fall back on a JSON prompt protocol. U
 compatibility path explicitly. Reports identify the configured backend; prompt mode is not
 presented as native function calling.
 
+Some gateways restrict OpenAI subscription-backed accounts to the Codex Responses client
+contract. Select `--client-profile codex` explicitly for those gateways; the default
+`standard` profile keeps normal OpenAI SDK headers. This setting contains no credential and
+does not change how `OPENAI_API_KEY` is loaded. The Codex profile uses stateless HTTP
+continuation because compatible gateways may reserve `previous_response_id` for Responses
+WebSocket v2.
+
 Writes and shell commands default to `ask`. Use `--auto-approve` only in a workspace you
 control. A live trace is written under `<workspace>/traces/`.
 

@@ -67,6 +67,10 @@ def run_command(
         str | None,
         typer.Option("--tool-mode", help="OpenAI tool transport: auto, function, or prompt."),
     ] = None,
+    client_profile: Annotated[
+        str | None,
+        typer.Option("--client-profile", help="OpenAI client profile: standard or codex."),
+    ] = None,
 ) -> None:
     """Run a task against a live model API."""
 
@@ -77,6 +81,7 @@ def run_command(
         model=model_name,
         openai_base_url=base_url,
         openai_tool_mode=tool_mode,
+        openai_client_profile=client_profile,
     )
     _require_api_key(config.provider)
     model = _create_model_client(config)
@@ -179,6 +184,10 @@ def live_eval_command(
         str | None,
         typer.Option("--tool-mode", help="OpenAI tool transport: auto, function, or prompt."),
     ] = None,
+    client_profile: Annotated[
+        str | None,
+        typer.Option("--client-profile", help="OpenAI client profile: standard or codex."),
+    ] = None,
     validate_only: Annotated[
         bool,
         typer.Option("--validate-only", help="Validate cases without API requests."),
@@ -208,6 +217,7 @@ def live_eval_command(
         model=model_name,
         openai_base_url=base_url,
         openai_tool_mode=tool_mode,
+        openai_client_profile=client_profile,
     )
     pricing = None
     if any(
@@ -233,7 +243,7 @@ def live_eval_command(
         model_factory=lambda: _create_model_client(config),
         model_name=config.model,
         model_backend=(
-            f"openai-responses-{config.openai_tool_mode}"
+            f"openai-responses-{config.openai_tool_mode}-{config.openai_client_profile}"
             if config.provider == "openai"
             else "anthropic-messages"
         ),
@@ -318,6 +328,7 @@ def _create_model_client(config: HarnessConfig) -> ModelClient:
             max_output_tokens=config.max_model_tokens,
             base_url=config.openai_base_url,
             tool_mode=config.openai_tool_mode,
+            client_profile=config.openai_client_profile,
         )
     return AnthropicModelClient(
         model=config.model,
