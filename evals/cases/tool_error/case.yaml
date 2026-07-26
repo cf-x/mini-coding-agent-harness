@@ -1,0 +1,23 @@
+name: tool_error
+description: Returns structured error and timeout results, then lets the model finish.
+task: Read missing.txt, run a deliberately slow command, and report both failures.
+tool_timeout_seconds: 0.05
+responses:
+  - tool_calls:
+      - id: call_missing
+        name: read_file
+        arguments:
+          path: missing.txt
+  - tool_calls:
+      - id: call_timeout
+        name: bash
+        arguments:
+          command: sleep 1
+  - content: "missing.txt does not exist and the slow command timed out."
+expected:
+  tool_called: [read_file, bash]
+  tool_status_equals:
+    read_file: error
+    bash: timeout
+  max_tool_calls: 2
+  run_status_equals: completed

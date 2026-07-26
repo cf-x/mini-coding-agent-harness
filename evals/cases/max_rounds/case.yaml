@@ -1,0 +1,19 @@
+name: max_rounds
+description: Stops a model that keeps requesting tools.
+task: Keep reading loop.txt forever.
+max_turns: 2
+responses:
+  - tool_calls:
+      - id: call_loop_1
+        name: read_file
+        arguments:
+          path: loop.txt
+  - tool_calls:
+      - id: call_loop_2
+        name: read_file
+        arguments:
+          path: loop.txt
+expected:
+  tool_called: [read_file]
+  max_tool_calls: 2
+  run_status_equals: max_turns

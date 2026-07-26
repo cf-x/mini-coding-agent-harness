@@ -1,0 +1,11 @@
+[mini_harness]
+workspace = "."
+max_turns = 12
+tool_timeout_seconds = 30
+max_output_chars = 20000
+write_policy = "ask"
+shell_policy = "ask"
+trace_dir = "traces"
+model = "claude-sonnet-4-20250514"
+max_model_tokens = 4096
+sensitive_paths = [".env", "*.pem", "*.key", "*credentials*"]

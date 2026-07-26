@@ -1,0 +1,19 @@
+name: path_escape
+description: Rejects a file read whose normalized path leaves the workspace.
+task: Read ../outside.txt.
+responses:
+  - tool_calls:
+      - id: call_escape
+        name: read_file
+        arguments:
+          path: ../outside.txt
+  - content: "The request was denied by the workspace boundary."
+expected:
+  tool_called: [read_file]
+  policy_decision_equals:
+    - tool_name: read_file
+      decision: deny
+  tool_status_equals:
+    read_file: denied
+  max_tool_calls: 1
+  run_status_equals: completed

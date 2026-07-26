@@ -1,0 +1,16 @@
+name: unknown_tool
+description: Converts an unregistered model tool request into a structured error.
+task: Search the workspace using search_file.
+responses:
+  - tool_calls:
+      - id: call_unknown
+        name: search_file
+        arguments:
+          query: TODO
+  - content: "search_file is not registered."
+expected:
+  tool_called: [search_file]
+  tool_status_equals:
+    search_file: error
+  max_tool_calls: 1
+  run_status_equals: completed

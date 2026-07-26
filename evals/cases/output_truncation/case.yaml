@@ -1,0 +1,18 @@
+name: output_truncation
+description: Truncates long shell output and marks the result.
+task: Print 500 x characters.
+max_output_chars: 80
+responses:
+  - tool_calls:
+      - id: call_long
+        name: bash
+        arguments:
+          command: "python3 -c \"print('x' * 500)\""
+  - content: "The long output was truncated by the harness."
+expected:
+  tool_called: [bash]
+  truncated_tools: [bash]
+  tool_status_equals:
+    bash: success
+  max_tool_calls: 1
+  run_status_equals: completed

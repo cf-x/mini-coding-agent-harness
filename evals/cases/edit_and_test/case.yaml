@@ -1,0 +1,33 @@
+name: edit_and_test
+description: Applies an exact edit and runs a deterministic test command.
+task: Fix add() in calculator.py and run the tests.
+responses:
+  - tool_calls:
+      - id: call_edit
+        name: edit_file
+        arguments:
+          path: calculator.py
+          old_text: "    return a - b"
+          new_text: "    return a + b"
+  - tool_calls:
+      - id: call_test
+        name: bash
+        arguments:
+          command: python3 -m unittest -q
+  - content: "Fixed add() and the tests pass."
+expected:
+  file_exists: [calculator.py]
+  file_contains:
+    - path: calculator.py
+      text: "return a + b"
+  command_exit_code:
+    - command: python3 -m unittest -q
+      value: 0
+  tool_called: [edit_file, bash]
+  policy_decision_equals:
+    - tool_name: edit_file
+      decision: allow
+    - tool_name: bash
+      decision: allow
+  max_tool_calls: 2
+  run_status_equals: completed

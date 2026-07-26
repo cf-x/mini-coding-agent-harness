@@ -1,0 +1,23 @@
+name: replay_divergence
+description: Reports the first turn whose normalized tool arguments differ.
+task: Read a.txt once.
+responses:
+  - tool_calls:
+      - id: call_original
+        name: read_file
+        arguments:
+          path: a.txt
+  - content: "Read a.txt."
+expected:
+  tool_called: [read_file]
+  run_status_equals: completed
+  replay:
+    matches: false
+    divergence_turn: 1
+    responses:
+      - tool_calls:
+          - id: call_changed
+            name: read_file
+            arguments:
+              path: b.txt
+      - content: "Read b.txt."

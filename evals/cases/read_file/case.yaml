@@ -1,0 +1,17 @@
+name: read_file
+description: Reads a file and completes without mutating the workspace.
+task: Read note.txt and summarize it.
+responses:
+  - tool_calls:
+      - id: call_read
+        name: read_file
+        arguments:
+          path: note.txt
+  - content: "The note says: deterministic traces make failures explainable."
+expected:
+  tool_called: [read_file]
+  tool_not_called: [write_file, edit_file, bash]
+  tool_status_equals:
+    read_file: success
+  max_tool_calls: 1
+  run_status_equals: completed
