@@ -261,7 +261,8 @@ Verified on 2026-07-26 with Python 3.12.13 on macOS arm64:
 
 - Ruff lint and format checks: passed.
 - MyPy strict check: passed for 44 checked source/test files.
-- pytest: 67 passed, 4 Docker integration tests skipped because Docker CLI was unavailable.
+- pytest: 71 passed, including real Docker integration coverage for workspace isolation,
+  minimal environment, non-root execution, disabled networking, and timeout cleanup.
 - deterministic evals: 10/10 cases passed.
 
 <!-- VERIFIED_RESULTS_END -->
