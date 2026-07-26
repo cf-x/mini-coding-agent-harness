@@ -250,24 +250,6 @@ Verified on 2026-07-26 with Python 3.12.13 on macOS arm64:
 - MyPy strict check: passed for 41 checked source/test files.
 - pytest: 57 passed.
 - deterministic evals: 10/10 cases passed.
-- task pass rate: 100.0%.
-- average turns: 2.20.
-- average tool calls: 1.30.
-- tool error rate: 23.1%.
-- policy denials: 2.
-- replay match rate: 50.0%.
-- average run duration: 22.30 ms in one local sample.
-- live eval v1 strict pass rate: 46.7% (7/15), Pass@3 60.0%.
-- live eval v2 strict pass rate: 86.7% (13/15), Pass@3 100.0%.
-- live eval v2 artifact correctness: 100.0% (15/15).
-- live eval v2 runtime completion: 100.0% (15/15).
-- live eval v2 tool contract rate: 86.7% (13/15).
-- live eval v2 estimated cost: $0.2046 using recorded OpenAI Standard rates.
-
-The tool-error rate includes intentional error, timeout, and unknown-tool results. The
-replay-match rate includes one intentionally divergent replay, so a 50% raw match rate is
-compatible with all replay assertions passing. Duration is environment-dependent and is
-not a performance claim.
 
 <!-- VERIFIED_RESULTS_END -->
 

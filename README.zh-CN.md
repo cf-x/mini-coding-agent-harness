@@ -172,23 +172,6 @@ mini-harness live-eval evals/live_cases --validate-only
 - MyPy 严格类型检查通过，共检查 41 个源码/测试文件。
 - pytest：57 passed。
 - 确定性 Eval：10/10 Case 通过。
-- task pass rate：100.0%。
-- average turns：2.20。
-- average tool calls：1.30。
-- tool error rate：23.1%。
-- policy denials：2。
-- replay match rate：50.0%。
-- 单次本机样本 average run duration：26.40 ms。
-- Live Eval v1 严格通过率：46.7%（7/15），Pass@3 60.0%。
-- Live Eval v2 严格通过率：86.7%（13/15），Pass@3 100.0%。
-- Live Eval v2 产物正确率：100.0%（15/15）。
-- Live Eval v2 Runtime 完成率：100.0%（15/15）。
-- Live Eval v2 工具契约通过率：86.7%（13/15）。
-- Live Eval v2 按记录的 OpenAI Standard 单价估算：`$0.2046`。
-
-`tool_error_rate` 包含故意制造的错误、超时和未知工具结果；`replay_match_rate`
-包含一个预期发生分歧的 Case，因此原始 Match Rate 为 50% 与所有 Replay 断言通过并不
-矛盾。耗时受环境影响，不作为性能结论。
 
 <!-- VERIFIED_RESULTS_END -->
 
